@@ -1,0 +1,86 @@
+#
+# Sample Weights & Biases YAML file for a hyperparameter sweep over all of TBGRL's parameters.
+#
+method: bayes
+metric:
+  goal: maximize
+  name: val_mean_hits@50
+parameters:
+  base_model:
+    distribution: constant
+    value: triplet
+  dataset:
+    distribution: constant
+    value: cora
+  do_classification_eval:
+    distribution: constant
+    value: "false"
+  drop_edge_p_1:
+    distribution: q_uniform
+    max: 0.9
+    min: 0.1
+    q: 0.1
+  drop_edge_p_2:
+    distribution: q_uniform
+    max: 0.9
+    min: 0.1
+    q: 0.1
+  drop_feat_p_1:
+    distribution: q_uniform
+    max: 0.9
+    min: 0.1
+    q: 0.1
+  drop_feat_p_2:
+    distribution: q_uniform
+    max: 0.9
+    min: 0.1
+    q: 0.1
+  epochs:
+    distribution: constant
+    value: 10000
+  graph_transforms:
+    distribution: constant
+    value: standard
+  intermediate_eval:
+    distribution: constant
+    value: "false"
+  link_mlp_hidden_size:
+    distribution: constant
+    value: 256
+  link_nn_epochs:
+    distribution: constant
+    value: 5000
+  lr:
+    distribution: q_uniform
+    max: 0.1
+    min: 0.001
+    q: 0.001
+  mm:
+    distribution: q_uniform
+    max: 1
+    min: 0.9
+    q: 0.01
+  neg_lambda:
+    distribution: q_uniform
+    max: 0.95
+    min: 0.05
+    q: 0.01
+  negative_transforms:
+    distribution: categorical
+    values:
+      - scramble-edge-combo
+      - rand-rand-combo
+      - rand-rand-rand-combo
+  num_runs:
+    distribution: constant
+    value: 5
+  training_early_stop:
+    distribution: categorical
+    values:
+      - "true"
+      - "false"
+  training_early_stop_patience:
+    distribution: int_uniform
+    max: 100
+    min: 5
+program: train_inductive.py
