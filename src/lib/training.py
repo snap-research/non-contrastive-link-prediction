@@ -251,9 +251,6 @@ def perform_gcn_margin_training(data, edge_split, output_dir, writer, device, in
                             batched=False,
                             n_feats=data.x.size(1)).to(device)
     n_nodes = data.num_nodes
-    # idx, population = edge_index_to_vector(data.edge_index, (n_nodes, n_nodes), False, False)
-    # idx.to('cpu')
-    # model = SAGE(input_size, 256, 3).to(device)
 
     adj = SparseTensor(row=data.edge_index[0],
                        col=data.edge_index[1],
@@ -357,8 +354,6 @@ def perform_gcn_margin_training(data, edge_split, output_dir, writer, device, in
     # save encoder weights
     torch.save({'model': model.state_dict()}, os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}.pt'))
     model = model.eval()
-    # with torch.no_grad():
-    #     representations = (model.full_forward(data.x, data.edge_index))
     representations = compute_data_representations_only(model, data, device, has_features=has_features)
     torch.save(representations, os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}-repr.pt'))
 
@@ -407,18 +402,13 @@ def perform_gbt_training(data, output_dir, device, input_size: int, has_features
 
         x1, x2 = transform_1(data), transform_2(data)
 
-        # q1, y2 = model(x1, x2)
-        # q2, y1 = model(x2, x1)
         y1, y2 = model(x1, x2)
 
-        # loss = 2 - cosine_similarity(q1, y2.detach(), dim=-1).mean() - cosine_similarity(q2, y1.detach(), dim=-1).mean()
         loss = barlow_twins_loss(y1, y2)
         loss.backward()
 
         # update online network
         optimizer.step()
-        # update target network
-        # model.update_target_network(mm)
 
         # log scalars
         wandb.log({'curr_lr': lr, 'train_loss': loss, 'step': step, 'epoch': epoch}, step=step)
@@ -742,14 +732,6 @@ def perform_bgrl_training(data,
                                      drop_edge_p=FLAGS.drop_edge_p_2,
                                      drop_feat_p=FLAGS.drop_feat_p_2)
 
-    # if FLAGS.batch_graphs:
-    #     # TODO(author): Respect flags in the batched setting instead of hardcoding
-    #     print('[WARNING]: TODO: Respect flags in the batched setting')
-    #     encoder = BatchedTwoLayerGCN(data.x.size(1), representation_size)
-    #     predictor = MLP_Predictor(representation_size, representation_size, hidden_size=FLAGS.predictor_hidden_size)
-    #     model = BatchedBGRL(encoder, predictor, has_features=has_features).to(device)
-    # else:
-
     encoder = g_zoo.get_model(FLAGS.graph_encoder_model,
                               input_size,
                               has_features,
@@ -838,21 +820,6 @@ def perform_bgrl_training(data,
     #####
     if FLAGS.batch_graphs:
         times = []
-        # train_loader = GraphSAINTNodeSampler(
-        #     data,
-        #     # sizes from https://github.com/pbielak/graph-barlow-twins/blob/master/experiments/scripts/batched/hps_bgrl.py
-        #     batch_size=FLAGS.graph_batch_size,
-        #     shuffle=True,
-        #     num_workers=FLAGS.n_workers,
-        # )
-        # train_loader = NeighborSampler(
-        #     data.edge_index,
-        #     # sizes from https://github.com/pbielak/graph-barlow-twins/blob/master/experiments/scripts/batched/hps_bgrl.py
-        #     sizes=[10,] * encoder.num_layers,
-        #     batch_size=FLAGS.graph_batch_size,
-        #     shuffle=True,
-        #     num_workers=FLAGS.n_workers,
-        # )
         train_loader = NeighborLoader(
             data,
             # sizes from https://github.com/pbielak/graph-barlow-twins/blob/master/experiments/scripts/batched/hps_bgrl.py

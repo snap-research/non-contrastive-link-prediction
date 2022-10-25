@@ -24,7 +24,7 @@ As described in the paper, we evaluate our models in both the transductive and i
 
 ### T-BGRL
 
-We ran Bayesian hyperparameter optimization for 25 runs on every model-dataset combination (including baselines). Each result is the result of the mean averaged over 5 runs (retraining both the encoder and decoder). The hyperparameters are optimized according to the mean validation `Hits@50` metric. We used the [Weights & Biases Bayesian optimizer](https://docs.wandb.ai/guides/sweeps). A sample W&B configuration file for CORA can be found at [`wandb_example/tbgrl_cora.yaml`](wandb_example/tbgrl_cora.yaml).
+We ran Bayesian hyperparameter optimization for 25 runs on every model-dataset combination (including baselines). Each result is the result of the mean averaged over 5 runs (retraining both the encoder and decoder). The hyperparameters are optimized according to the mean validation `Hits@50` metric. We used the [Weights & Biases Bayesian optimizer](https://docs.wandb.ai/guides/sweeps). A sample W&B configuration file for CORA can be found at [`wandb_sample/tbgrl_cora.yaml`](wandb_sample/tbgrl_cora.yaml).
 
 All transductive runs are performed with an emebedding size of 256, and all inductive runs (due to the smaller datasets) are performed with an embedding size of 128.
 
