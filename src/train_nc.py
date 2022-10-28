@@ -20,7 +20,7 @@ from lib.training import perform_bgrl_training, perform_cca_ssg_training, perfor
 import wandb
 from lib.transforms import VALID_TRANSFORMS, VALID_NEG_TRANSFORMS
 
-from lib.utils import add_node_feats, merge_multirun_results, set_random_seeds, do_edge_split
+from lib.utils import add_node_feats, merge_multirun_results, set_random_seeds, do_transductive_edge_split
 
 ######
 # Flags
@@ -85,7 +85,6 @@ flags.DEFINE_enum('trivial_neg_sampling', 'auto', ['true', 'false', 'auto'],
 flags.DEFINE_bool('adjust_layer_sizes', False, 'Whether or not to adjust MLP layer sizes for fair comparisons')
 
 # Unused flags; here for legacy support
-flags.DEFINE_integer('data_seed', 1, 'Unusued; here for legacy support')
 flags.DEFINE_integer('num_eval_splits', 3, 'Unusued; here for legacy support')
 flags.DEFINE_bool('eval_only', False, 'Only evaluate the model.')
 flags.DEFINE_multi_enum(
@@ -213,7 +212,7 @@ def main(_):
         # TODO(author): move it lower once we're sure this works properly
         edge_split = dataset.get_edge_split()
     else:
-        edge_split = do_edge_split(dataset, FLAGS.split_seed)
+        edge_split = do_transductive_edge_split(dataset, FLAGS.split_seed)
         data.edge_index = edge_split['train']['edge'].t()  # type: ignore
     end_time = time.time_ns()
     log.info(f'Took {(end_time - st_time) / 1e9}s to load data')

@@ -1,3 +1,5 @@
+.vscode
+
 # Temp files
 *.pyc
 *.pt

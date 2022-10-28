@@ -20,7 +20,7 @@ from lib.eval import do_all_eval
 from lib.transforms import VALID_TRANSFORMS
 from ogb.linkproppred import PygLinkPropPredDataset
 
-from lib.utils import add_node_feats, merge_multirun_results, set_random_seeds, do_edge_split
+from lib.utils import add_node_feats, merge_multirun_results, set_random_seeds, do_transductive_edge_split
 
 ######
 # Flags
@@ -152,7 +152,7 @@ def main(_):
     if isinstance(dataset, PygLinkPropPredDataset):
         edge_split = dataset.get_edge_split()
     else:
-        edge_split = do_edge_split(dataset)
+        edge_split = do_transductive_edge_split(dataset)
         data.edge_index = edge_split['train']['edge'].t()
 
     end_time = time.time_ns()

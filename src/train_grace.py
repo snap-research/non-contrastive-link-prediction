@@ -18,7 +18,7 @@ from lib.eval import do_all_eval
 from lib.link_predictors import LinkPredictorZoo
 from lib.training import get_time_bundle
 
-from lib.utils import do_edge_split, merge_multirun_results  # type: ignore
+from lib.utils import do_transductive_edge_split, merge_multirun_results  # type: ignore
 
 ######
 # Flags
@@ -109,7 +109,7 @@ def main(_):
         # TODO(author): move it lower once we're sure this works properly
         edge_split = dataset.get_edge_split()
     else:
-        edge_split = do_edge_split(dataset, FLAGS.split_seed)
+        edge_split = do_transductive_edge_split(dataset, FLAGS.split_seed)
         data.edge_index = edge_split['train']['edge'].t()  # type: ignore
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

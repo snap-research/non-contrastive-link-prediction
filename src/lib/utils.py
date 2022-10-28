@@ -1,3 +1,6 @@
+import json
+import logging
+from os import path
 import random
 
 import numpy as np
@@ -10,8 +13,48 @@ import math
 from absl import flags
 import pandas as pd
 
+log = logging.getLogger(__name__)
 FLAGS = flags.FLAGS
 SMALL_DATASETS = set(['cora', 'citeseer'])
+
+
+def write_results(model_name, output_dir, results):
+    """Write the given model results to results.json in the provided
+    output directory
+
+    Args:
+        model_name (str): Model name
+        output_dir (str): Output directory
+        results (dict): Dictionary of model results
+    """
+    results_path = path.join(output_dir, 'results.json')
+
+    if path.exists(results_path):
+        log.info('Existing file found, appending results')
+        with open(results_path, 'rb') as f:
+            contents = json.load(f)
+        log.debug(f'Existing contents: {contents}')
+
+        contents['results'].extend(results)
+
+        mn = model_name
+        if contents['model_name'] != mn:
+            log.warn(f'[WARNING]: Model names do not match - {contents["model_name"]} vs {mn}')
+
+        with open(results_path, 'w') as f:
+            json.dump({
+                'model_name': mn,
+                'results': contents['results'],
+            }, f, indent=4)
+        log.info(f'Appended results to {results_path}')
+    else:
+        log.info('No results file found, writing to new one')
+        with open(results_path, 'w') as f:
+            json.dump({
+                'model_name': model_name,
+                'results': results,
+            }, f, indent=4)
+        log.info(f'Wrote results to file at {results_path}')
 
 
 def add_node_feats(data, device, type='degree'):
@@ -147,7 +190,7 @@ def do_node_inductive_edge_split(dataset: Dataset,
 
 
 # From the OGB implementation of SEAL
-def do_edge_split(dataset, fast_split=False, val_ratio=0.05, test_ratio=0.1, split_seed=234):
+def do_transductive_edge_split(dataset, fast_split=False, val_ratio=0.05, test_ratio=0.1, split_seed=234):
     data = dataset[0]
     random.seed(split_seed)
     torch.manual_seed(split_seed)
@@ -207,6 +250,7 @@ def keywise_prepend(d, prefix):
 
 def is_small_dset(dset):
     return dset in SMALL_DATASETS
+
 
 def merge_multirun_results(all_results):
     runs = zip(*all_results)

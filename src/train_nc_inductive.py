@@ -27,7 +27,6 @@ log.setLevel(logging.DEBUG)
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('model_seed', None, 'Random seed used for model initialization and training.')
-flags.DEFINE_integer('data_seed', 1, 'Random seed used to generate train/val/test split.')
 flags.DEFINE_integer('num_eval_splits', 3, 'Number of different train/test splits the model will be evaluated over.')
 
 # Dataset.

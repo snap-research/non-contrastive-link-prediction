@@ -1,5 +1,4 @@
-Link Prediction with Non-Contrastive Learning
-------
+# Link Prediction with Non-Contrastive Learning
 
 This respository contains the official implementation of T-BGRL, as well as re-implementations of GRACE, BGRL, GBT, and CCA-SSG adapted for link prediction. It also includes a max-margin-loss GCN implementation. Instructions on how to run each of the experiments can be found below.
 
@@ -11,7 +10,7 @@ While we do report and log ROC-AUC results, they should not be used as the prima
 
 The packages required for running the code are enumerated in the `requirements.txt` file. You can try to install them with `pip install -r requirements.txt`, but you may run into issue installing `torch_geometric` and its associated packages. You can install it by following the directions from [their website](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html) instead.
 
-## Requirements
+## Hardware Requirements
 
 Most of the code should be able to run using only CPUs, but some models may require the use of CUDA-compatible GPUs. All experiments were conducted on either a NVIDIA V100 or P100 GPU. It is also recommended to have at least 8 CPU cores and 20 GB of RAM for the larger models.
 
@@ -19,14 +18,13 @@ Most of the code should be able to run using only CPUs, but some models may requ
 
 As described in the paper, we evaluate our models in both the transductive and inductive settings. For the transductive setting, we use a 85%/5%/10% training/validation/test data split. For the inductive setting, we use a 10%/30% (large dataset/small dataset) split at each stage (as described in the paper). The inductive splitting code can be found in the [`perform_inductive_margin_training`](src/lib/utils.py) function.
 
-
 ## Reproducing Results
 
 ### T-BGRL
 
 We ran Bayesian hyperparameter optimization for 25 runs on every model-dataset combination (including baselines). Each result is the result of the mean averaged over 5 runs (retraining both the encoder and decoder). The hyperparameters are optimized according to the mean validation `Hits@50` metric. We used the [Weights & Biases Bayesian optimizer](https://docs.wandb.ai/guides/sweeps). A sample W&B configuration file for CORA can be found at [`wandb_sample/tbgrl_cora.yaml`](wandb_sample/tbgrl_cora.yaml).
 
-All transductive runs are performed with an emebedding size of 256, and all inductive runs (due to the smaller datasets) are performed with an embedding size of 128.
+All transductive runs are performed with an embedding size of 256, and all inductive runs (due to the smaller datasets) are performed with an embedding size of 128.
 
 The detailed run parameters for each BGRL run can be found in [`src/config`](src/config). Note that many of the parameters in those configs are unused (e.g. `hybrid_transition_epoch`). The most important parameters are listed below:
 
