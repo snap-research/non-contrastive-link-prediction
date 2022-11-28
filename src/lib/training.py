@@ -121,7 +121,7 @@ def compute_margin_loss(device, n_nodes, edge_index, row, col, model_out):
 
 
 def perform_inductive_margin_training(train_data, val_data, inference_data, data, test_edge_bundle, negative_samples,
-                                      output_dir, writer, device, input_size: int, has_features: bool, g_zoo):
+                                      output_dir, device, input_size: int, has_features: bool, g_zoo):
     train_data = train_data.to(device)
 
     training_edge = train_data.edge_index
@@ -186,9 +186,6 @@ def perform_inductive_margin_training(train_data, val_data, inference_data, data
         # log scalars
         wandb.log({'curr_lr': lr, 'curr_mm': mm, 'train_loss': loss, 'step': step, 'epoch': step}, step=step)
 
-        writer.add_scalar('gcn/params/lr', lr, step)
-        writer.add_scalar('gcn/params/mm', mm, step)
-        writer.add_scalar('gcn/train/loss', loss, step)
         return loss
 
     @torch.no_grad()
@@ -199,7 +196,6 @@ def perform_inductive_margin_training(train_data, val_data, inference_data, data
         val_loss = compute_margin_loss(device, train_nodes, valid_edge, val_row, val_col, model_out)
         wandb.log({'margin_val_loss': val_loss, 'step': step, 'epoch': step}, step=step)
 
-        writer.add_scalar('gcn/val/loss', val_loss, step)
         return val_loss
 
     #####
@@ -240,7 +236,7 @@ def perform_inductive_margin_training(train_data, val_data, inference_data, data
     return model, representations, time_bundle
 
 
-def perform_gcn_margin_training(data, edge_split, output_dir, writer, device, input_size: int, has_features: bool,
+def perform_gcn_margin_training(data, edge_split, output_dir, device, input_size: int, has_features: bool,
                                 g_zoo):
     valid_edge = edge_split['valid']['edge'].T.to(device)
 
@@ -307,9 +303,6 @@ def perform_gcn_margin_training(data, edge_split, output_dir, writer, device, in
         # log scalars
         wandb.log({'curr_lr': lr, 'curr_mm': mm, 'train_loss': loss, 'step': step, 'epoch': step}, step=step)
 
-        writer.add_scalar('gcn/params/lr', lr, step)
-        writer.add_scalar('gcn/params/mm', mm, step)
-        writer.add_scalar('gcn/train/loss', loss, step)
         return loss
 
     @torch.no_grad()
@@ -321,7 +314,6 @@ def perform_gcn_margin_training(data, edge_split, output_dir, writer, device, in
         val_loss = compute_margin_loss(device, n_nodes, valid_edge, val_row, val_col, model_out)
         wandb.log({'margin_val_loss': val_loss, 'step': step, 'epoch': step}, step=step)
 
-        writer.add_scalar('gcn/val/loss', val_loss, step)
         return val_loss
 
     #####
