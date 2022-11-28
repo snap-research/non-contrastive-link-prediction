@@ -3,24 +3,21 @@ import os
 from os import path
 import time
 import json
-
 from absl import app
 from absl import flags
 import torch
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter  # type: ignore
-
-from lib.data import ConvertToFloat, get_dataset, get_wiki_cs
+from lib.data import get_dataset, get_wiki_cs, ConvertToFloat
 from lib.bgrl import compute_data_representations_only
 from lib.link_predictors import LinkPredictorZoo
 from lib.models import EncoderZoo
-from lib.eval import do_all_eval, perform_nn_link_eval
+from lib.eval import do_all_eval, do_production_eval, perform_nn_link_eval
 from ogb.linkproppred import PygLinkPropPredDataset
 from lib.training import perform_bgrl_training, perform_cca_ssg_training, perform_gbt_training, perform_simsiam_training, perform_triplet_training
 import wandb
-from lib.transforms import VALID_TRANSFORMS, VALID_NEG_TRANSFORMS
-
-from lib.utils import add_node_feats, merge_multirun_results, set_random_seeds, do_transductive_edge_split
+from lib.transforms import VALID_NEG_TRANSFORMS, VALID_TRANSFORMS
+from lib.utils import add_node_feats, do_node_inductive_edge_split, do_transductive_edge_split, is_small_dset, merge_multirun_results, set_random_seeds
 
 ######
 # Flags
@@ -29,69 +26,32 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
 FLAGS = flags.FLAGS
+flags.DEFINE_integer('model_seed', None, 'Random seed used for model initialization and training.')
+flags.DEFINE_integer('num_eval_splits', 3, 'Number of different train/test splits the model will be evaluated over.')
 
-# Dataset settings
+# Dataset.
+flags.DEFINE_string('model_name_prefix', '', 'Prefix to prepend in front of the model name.')
+flags.DEFINE_enum('base_model', 'bgrl', ['gbt', 'bgrl', 'simsiam', 'triplet', 'cca'], 'Which base model to use.')
 flags.DEFINE_enum('dataset', 'coauthor-cs', [
     'amazon-computers', 'amazon-photos', 'coauthor-cs', 'coauthor-physics', 'wiki-cs', 'ogbl-collab', 'ogbl-ddi',
     'ogbl-ppa', 'cora', 'citeseer', 'squirrel', 'chameleon', 'crocodile', 'texas'
 ], 'Which graph dataset to use.')
-flags.DEFINE_string('dataset_dir', './data', 'Where the dataset resides.')
-flags.DEFINE_integer('split_seed', 234, 'Seed to use for dataset splitting')
-flags.DEFINE_enum('feature_fallback', 'degree', ['degree', 'learn'],
-                  'Which method to use as a fallback if the matrix has no node features')
-
-# Encoder/overall settings
-flags.DEFINE_integer('num_runs', 5, 'Number of times to train/evaluate the model and re-run')
-flags.DEFINE_integer('model_seed', None, 'Random seed used for model initialization and training.')
-flags.DEFINE_string('model_name_prefix', '', 'Prefix to prepend in front of the model name.')
-flags.DEFINE_enum('graph_encoder_model', 'gcn', ['gcn', 'sage'], 'Which graph encoder model to use')
-flags.DEFINE_integer('predictor_hidden_size', 256, 'Hidden size of projector.')
-
-flags.DEFINE_enum('base_model', 'bgrl', ['gbt', 'bgrl', 'simsiam', 'triplet', 'cca'], 'Which base model to use.')
-flags.DEFINE_enum('scheduler', 'cosine', ['cyclic', 'cosine'], 'Which lr scheduler to use')
-flags.DEFINE_float('neg_lambda', 0.5, 'Weight to use for the negative triplet head. Between 0 and 1')
-flags.DEFINE_multi_integer('graph_encoder_layer', [256, 256], 'Conv layer sizes.')
-flags.DEFINE_integer('graph_encoder_layer_override', -1, 'Override for layer sizes')
-
-flags.DEFINE_bool('debug', False, 'Whether or not this is a debugging run')
-flags.DEFINE_bool('intermediate_eval', False, 'Whether or not to evaluate as we go')
-flags.DEFINE_bool('dataset_fixed', True, 'Whether or not a message-passing vs normal edges bug was fixed')
-flags.DEFINE_integer('intermediate_eval_interval', 1000, 'Intermediate evaluation interval')
-
-# Encoder training hyperparameters.
-flags.DEFINE_integer('epochs', 10000, 'The number of training epochs.')
-flags.DEFINE_float('lr', 1e-4, 'The learning rate for model training.')
-flags.DEFINE_float('weight_decay', 1e-5, 'The value of the weight decay for training.')
-flags.DEFINE_float('mm', 0.99, 'The momentum for moving average.')
-flags.DEFINE_integer('lr_warmup_epochs', 1000, 'Warmup period for learning rate.')
-flags.DEFINE_bool('training_early_stop', False, 'Whether or not to perform early stopping on the training loss')
-flags.DEFINE_integer('training_early_stop_patience', 50, 'Training early stopping patience')
-
-flags.DEFINE_bool('use_margin', False, 'Whether or not to use a margin loss for the network.')
-flags.DEFINE_float('margin', 0.1, 'Margin to use for the margin-based loss.')
-flags.DEFINE_bool('hybrid_loss', False, 'Whether or not to use a hybrid BGRL -> margin loss')
-flags.DEFINE_float('hybrid_transition_epoch', 1000, 'Epoch to transition to margin loss')
-flags.DEFINE_integer('eval_epochs', 5, 'Evaluate every eval_epochs.')
-
-# Decoder settings
 flags.DEFINE_multi_enum('link_pred_model', ['prod_mlp'], ['lr', 'mlp', 'cosine', 'seal', 'prod_lr', 'prod_mlp'],
                         'Which link prediction model to use')
-flags.DEFINE_bool('do_classification_eval', True, 'Whether or not to evaluate the model\'s classification performance')
-flags.DEFINE_integer('link_mlp_hidden_size', 256, 'Size of hidden layer in MLP for evaluation')
-flags.DEFINE_float('link_mlp_lr', 0.01, 'Size of hidden layer in MLP for evaluation')
-flags.DEFINE_integer('link_nn_epochs', 10000, 'Number of epochs in the NN for evaluation')
-flags.DEFINE_enum('trivial_neg_sampling', 'auto', ['true', 'false', 'auto'],
-                  'Whether or not to do trivial random sampling. Auto will choose based on dataset size.')
-flags.DEFINE_bool('adjust_layer_sizes', False, 'Whether or not to adjust MLP layer sizes for fair comparisons')
+flags.DEFINE_enum('scheduler', 'cosine', ['cyclic', 'cosine'], 'Which lr scheduler to use')
 
-# Unused flags; here for legacy support
-flags.DEFINE_integer('num_eval_splits', 3, 'Unusued; here for legacy support')
+flags.DEFINE_integer('num_runs', 5, 'Number of times to train/evaluate the model and re-run')
+flags.DEFINE_enum('graph_encoder_model', 'gcn', ['gcn', 'sage'], 'Which graph encoder model to use')
+flags.DEFINE_enum('graph_transforms', 'standard', list(VALID_TRANSFORMS.keys()), 'Which graph dataset to use.')
+flags.DEFINE_enum('negative_transforms', 'randomize-feats', list(VALID_NEG_TRANSFORMS.keys()),
+                  'Which negative graph transforms to use (triplet formulation only).')
+flags.DEFINE_string('dataset_dir', './data', 'Where the dataset resides.')
 flags.DEFINE_bool('eval_only', False, 'Only evaluate the model.')
 flags.DEFINE_multi_enum(
     'eval_only_pred_model', [], ['lr', 'mlp', 'cosine', 'seal', 'prod_lr'],
     'Which link prediction models to use (overwrites link_pred_model if eval_only is True and this is set)')
+flags.DEFINE_integer('split_seed', 234, 'Seed to use for dataset splitting')
 
-# Batch-related settings
 flags.DEFINE_bool('batch_links', False, 'Whether or not to perform batching on links')
 flags.DEFINE_integer('link_batch_size', 64 * 1024, 'Batch size for links')
 flags.DEFINE_bool('batch_graphs', False, 'Whether or not to perform batching on graphs')
@@ -99,10 +59,24 @@ flags.DEFINE_integer('graph_batch_size', 1024, 'Number of subgraphs to use per m
 flags.DEFINE_integer('graph_eval_batch_size', 128, 'Number of subgraphs to use per minibatch')
 flags.DEFINE_integer('n_workers', 0, 'Number of workers to use')
 
-# Augmentation-related
-flags.DEFINE_enum('graph_transforms', 'standard', list(VALID_TRANSFORMS.keys()), 'Which graph dataset to use.')
-flags.DEFINE_enum('negative_transforms', 'randomize-feats', list(VALID_NEG_TRANSFORMS.keys()),
-                  'Which negative graph transforms to use (triplet formulation only).')
+flags.DEFINE_enum('feature_fallback', 'degree', ['degree', 'learn'],
+                  'Which method to use as a fallback if the matrix has no node features')
+
+# Architecture.
+flags.DEFINE_multi_integer('graph_encoder_layer', [256, 128], 'Conv layer sizes.')
+flags.DEFINE_integer('predictor_hidden_size', 512, 'Hidden size of projector.')
+
+# Training hyperparameters.
+flags.DEFINE_integer('epochs', 10000, 'The number of training epochs.')
+flags.DEFINE_float('lr', 1e-5, 'The learning rate for model training.')
+flags.DEFINE_float('cyclic_lr', 0.1, 'The learning rate for model training.')
+flags.DEFINE_float('weight_decay', 1e-5, 'The value of the weight decay for training.')
+flags.DEFINE_float('mm', 0.99, 'The momentum for moving average.')
+flags.DEFINE_integer('lr_warmup_epochs', 1000, 'Warmup period for learning rate.')
+flags.DEFINE_bool('training_early_stop', False, 'Whether or not to perform early stopping on the training loss')
+flags.DEFINE_integer('training_early_stop_patience', 50, 'Training early stopping patience')
+
+# Augmentations.
 flags.DEFINE_float('drop_edge_p_1', 0., 'Probability of edge dropout 1.')
 flags.DEFINE_float('drop_feat_p_1', 0., 'Probability of node feature dropout 1.')
 flags.DEFINE_float('drop_edge_p_2', 0., 'Probability of edge dropout 2.')
@@ -111,18 +85,45 @@ flags.DEFINE_float('add_edge_ratio_1', 0.,
                    'Ratio of negative edges to sample (compared to existing positive edges) for online net.')
 flags.DEFINE_float('add_edge_ratio_2', 0.,
                    'Ratio of negative edges to sample (compared to existing positive edges) for target net.')
-flags.DEFINE_float('cca_lambda', 0., 'Lambda for CCA-SSG')
+flags.DEFINE_float('neg_lambda', 0.5, 'Weight to use for the negative triplet head. Between 0 and 1')
+flags.DEFINE_bool('use_margin', False, 'Whether or not to use a margin loss for the network.')
+flags.DEFINE_float('margin', 0.1, 'Margin to use for the margin-based loss.')
+flags.DEFINE_bool('hybrid_loss', False, 'Whether or not to use a hybrid BGRL -> margin loss')
+flags.DEFINE_float('hybrid_transition_epoch', 1000, 'Epoch to transition to margin loss')
+flags.DEFINE_float('big_split_ratio', 0.2, 'Split ratio to use for larger datasets')
 
-# Logging and checkpointing
+# Logging and checkpoint.
 flags.DEFINE_string('logdir', None, 'Where the checkpoint and logs are stored.')
 flags.DEFINE_integer('log_steps', 10, 'Log information at every log_steps.')
 
+# Evaluation
+flags.DEFINE_integer('eval_epochs', 5, 'Evaluate every eval_epochs.')
+flags.DEFINE_bool('do_classification_eval', False, 'Whether or not to evaluate the model\'s classification performance')
+
+# Link prediction model-specific flags
+# MLP:
+flags.DEFINE_integer('link_mlp_hidden_size', 128, 'Size of hidden layer in MLP for evaluation')
+flags.DEFINE_float('link_mlp_lr', 0.01, 'Size of hidden layer in MLP for evaluation')
+flags.DEFINE_integer('link_nn_epochs', 10000, 'Number of epochs in the NN for evaluation')
+flags.DEFINE_enum('trivial_neg_sampling', 'auto', ['true', 'false', 'auto'],
+                  'Whether or not to do trivial random sampling. Auto will choose based on dataset size.')
+
+flags.DEFINE_bool('debug', False, 'Whether or not this is a debugging run')
+flags.DEFINE_bool('save_extra', False, 'Whether or not to save extra plotting/debugging info')
+flags.DEFINE_bool('intermediate_eval', False, 'Whether or not to evaluate as we go')
+flags.DEFINE_bool('dataset_fixed', True, 'Whether or not a message-passing vs normal edges bug was fixed')
+flags.DEFINE_bool('adjust_layer_sizes', False, 'Whether or not to adjust MLP layer sizes for fair comparisons')
+flags.DEFINE_integer('intermediate_eval_interval', 1000, 'Intermediate evaluation interval')
+flags.DEFINE_float('cca_lambda', 0., 'Lambda for CCA-SSG')
+flags.DEFINE_enum('split_method', 'transductive', ['inductive', 'transductive'],
+                  'Which method to use to split the dataset (inductive or transductive).')
+
 
 def get_full_model_name():
-    model_prefix = ''
+    model_prefix = 'I'
     edge_prob_str = f'dep1{FLAGS.drop_edge_p_1}_dfp1{FLAGS.drop_feat_p_1}_dep2{FLAGS.drop_edge_p_2}_dfp2{FLAGS.drop_feat_p_2}'
     if FLAGS.model_name_prefix:
-        model_prefix = FLAGS.model_name_prefix + '_'
+        model_prefix = FLAGS.model_name_prefix + '_' + model_prefix
 
     if FLAGS.base_model == 'gbt':
         return f'{model_prefix}GBT_{FLAGS.dataset}_lr{FLAGS.lr}_mm{FLAGS.mm}_{edge_prob_str}'
@@ -133,11 +134,12 @@ def get_full_model_name():
 
     return f'{model_prefix}BGRL_{FLAGS.dataset}_lr{FLAGS.lr}_mm{FLAGS.mm}_{edge_prob_str}'
 
-
 ######
 # Main
 ######
 def main(_):
+    log.info('Run started!')
+
     if FLAGS.eval_only_pred_model and FLAGS.eval_only:
         log.info(
             f'Overridding current value of eval_only_pred_model ({FLAGS.link_pred_model}) with {FLAGS.eval_only_pred_model}'
@@ -149,10 +151,6 @@ def main(_):
         log.info(f'No logdir set, using default of {new_logdir}')
         FLAGS.logdir = new_logdir
 
-    if FLAGS.graph_encoder_layer_override > 0:
-        new_lsize = FLAGS.graph_encoder_layer_override
-        FLAGS.graph_encoder_layer = [new_lsize, new_lsize]
-
     if FLAGS.trivial_neg_sampling == 'auto':
         if FLAGS.dataset == 'ogbl-collab':
             FLAGS.trivial_neg_sampling = 'true'
@@ -161,7 +159,11 @@ def main(_):
             FLAGS.trivial_neg_sampling = 'false'
             log.info(f'Setting trivial_neg_sampling to true since auto is set and the dataset is small')
 
-    wandb.init(project=FLAGS.base_model, config={'model_name': get_full_model_name(), **FLAGS.flag_values_dict()})
+    wandb.init(project=f'fixed-{FLAGS.base_model}-prod',
+               config={
+                   'model_name': get_full_model_name(),
+                   **FLAGS.flag_values_dict()
+               })
 
     # use CUDA_VISIBLE_DEVICES to select gpu
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -196,24 +198,26 @@ def main(_):
 
     # load data
     st_time = time.time_ns()
-    if FLAGS.dataset != 'wiki-cs':
-        # TODO(author): figure out a better way to do this
-        if FLAGS.dataset == 'obgl-ddi':
-            # no features to normalize
-            dataset = get_dataset(FLAGS.dataset_dir, FLAGS.dataset, transform=ConvertToFloat())  # type: ignore
-        else:
-            dataset = get_dataset(FLAGS.dataset_dir, FLAGS.dataset)
-    else:
-        dataset, train_masks, _, _ = get_wiki_cs(FLAGS.dataset_dir)
-
+    dataset = get_dataset(FLAGS.dataset_dir, FLAGS.dataset)
+    num_eval_splits = FLAGS.num_eval_splits
     data = dataset[0]  # all datasets (currently) are just 1 graph
 
+    small_dataset = is_small_dset(FLAGS.dataset)
+    if small_dataset:
+        log.info('Small dataset detected, will use small dataset settings for inductive split.')
+
     if isinstance(dataset, PygLinkPropPredDataset):
-        # TODO(author): move it lower once we're sure this works properly
-        edge_split = dataset.get_edge_split()
-    else:
+        raise NotImplementedError()
+
+    if FLAGS.split_method == 'transductive':
         edge_split = do_transductive_edge_split(dataset, FLAGS.split_seed)
         data.edge_index = edge_split['train']['edge'].t()  # type: ignore
+        data.to(device)
+        training_data = data
+    else: # inductive
+        training_data, val_data, inference_data, data, test_edge_bundle, negative_samples = do_node_inductive_edge_split(
+            dataset=dataset, split_seed=FLAGS.split_seed, small_dataset=small_dataset)  # type: ignore
+
     end_time = time.time_ns()
     log.info(f'Took {(end_time - st_time) / 1e9}s to load data')
 
@@ -221,27 +225,11 @@ def main(_):
 
     # only move data if we're doing full batch
     if not FLAGS.batch_graphs:
-        data = data.to(device)  # type: ignore
+        training_data = training_data.to(device)
 
     # build networks
-    if data.x is None:
-        if FLAGS.feature_fallback == 'degree':
-            has_features = True
-            log.warn(
-                f'[WARNING] Dataset {FLAGS.dataset} appears to be featureless - using one-hot degree matrix as features'
-            )
-
-            data = add_node_feats(data, device)
-            input_size = data.x.size(1)  # type: ignore
-        elif FLAGS.feature_fallback == 'learn':
-            has_features = False
-            input_size = FLAGS.graph_encoder_layer[0]
-            log.warn(f'[WARNING] Dataset {FLAGS.dataset} appears to be featureless - using learnable feature matrix')
-        else:
-            raise ValueError(f'Unknown value for feature_fallback: {FLAGS.feature_fallback}')
-    else:
-        has_features = True
-        input_size = data.x.size(1)  # type: ignore
+    has_features = True
+    input_size = data.x.size(1)  # type: ignore
     representation_size = FLAGS.graph_encoder_layer[-1]
 
     if FLAGS.intermediate_eval:
@@ -259,13 +247,12 @@ def main(_):
                     encoder = model.encoder
                 representations = compute_data_representations_only(encoder, data, device, has_features=has_features)
                 embeddings = nn.Embedding.from_pretrained(representations, freeze=True)
-                _, results = perform_nn_link_eval(lp_zoo, dataset, edge_split, None, embeddings)
+                _, results = perform_nn_link_eval(lp_zoo, dataset, edge_split, writer, None, embeddings)
                 wandb.log({f'im_{kname}': v for kname, v in results.items()}, step=epoch)
     else:
         train_cb = None  # type: ignore
 
     all_results = []
-    all_class_results = []
     all_times = []
     total_times = []
     time_bundle = None
@@ -276,37 +263,37 @@ def main(_):
         print('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
         print('=' * 30)
         print('=' * 30)
+
         if FLAGS.base_model == 'bgrl':
-            encoder, representations, time_bundle = perform_bgrl_training(data=data,
+            encoder, representations, time_bundle = perform_bgrl_training(data=training_data,
                                                                           output_dir=OUTPUT_DIR,
                                                                           representation_size=representation_size,
                                                                           device=device,
                                                                           input_size=input_size,
                                                                           has_features=has_features,
                                                                           g_zoo=g_zoo,
-                                                                          train_cb=train_cb)
-            del encoder  # don't need rn
+                                                                          train_cb=train_cb,
+                                                                          extra_return=FLAGS.save_extra)
+            if FLAGS.save_extra:
+                predictor = representations
             log.info('Finished training!')
         elif FLAGS.base_model == 'cca':
-            encoder, representations, time_bundle = perform_cca_ssg_training(data=data,
+            time_bundle = None
+            encoder, representations, time_bundle = perform_cca_ssg_training(data=training_data,
                                                                              output_dir=OUTPUT_DIR,
                                                                              device=device,
                                                                              input_size=input_size,
                                                                              has_features=has_features,
                                                                              g_zoo=g_zoo)
-            del encoder  # don't need rn
             log.info('Finished training!')
         elif FLAGS.base_model == 'gbt':
-            encoder, representations, time_bundle = perform_gbt_training(data=data,
-                                                                         output_dir=OUTPUT_DIR,
-                                                                         device=device,
-                                                                         input_size=input_size,
-                                                                         has_features=has_features,
-                                                                         g_zoo=g_zoo)
-            del encoder
+            encoder, representations, time_bundle = perform_gbt_training(training_data, OUTPUT_DIR, device,
+                                                                         input_size, has_features, g_zoo)
+            # del encoder
             log.info('Finished training')
         elif FLAGS.base_model == 'simsiam':
-            encoder, representations = perform_simsiam_training(data=data,
+            time_bundle = None
+            encoder, representations = perform_simsiam_training(data=training_data,
                                                                 output_dir=OUTPUT_DIR,
                                                                 representation_size=representation_size,
                                                                 device=device,
@@ -314,10 +301,10 @@ def main(_):
                                                                 has_features=has_features,
                                                                 g_zoo=g_zoo,
                                                                 train_cb=train_cb)
-            del encoder  # don't need rn
+            # del encoder  # don't need rn
             log.info('Finished training!')
         elif FLAGS.base_model == 'triplet':
-            encoder, representations, time_bundle = perform_triplet_training(data=data,
+            encoder, representations, time_bundle = perform_triplet_training(data=training_data.to(device),
                                                                              output_dir=OUTPUT_DIR,
                                                                              representation_size=representation_size,
                                                                              device=device,
@@ -333,24 +320,44 @@ def main(_):
             all_times.append(times.tolist())
             total_times.append(int(total_time))
 
-        # perform link prediction
-        # we only need to keep the online encoder - get rid of the rest to save memory
-        embeddings = nn.Embedding.from_pretrained(representations, freeze=True)
+        if FLAGS.split_method == 'transductive':
+            embeddings = nn.Embedding.from_pretrained(representations, freeze=True)
+            results, _ = do_all_eval(get_full_model_name(),
+                                                output_dir=OUTPUT_DIR,
+                                                valid_models=valid_models,
+                                                dataset=dataset,
+                                                edge_split=edge_split,
+                                                embeddings=embeddings,
+                                                lp_zoo=lp_zoo,
+                                                wb=wandb)
+        else: # inductive
+            results = do_production_eval(model_name=get_full_model_name(),
+                                        output_dir=OUTPUT_DIR,
+                                        encoder=encoder,
+                                        valid_models=valid_models,
+                                        train_data=training_data,
+                                        val_data=val_data,
+                                        inference_data=inference_data,
+                                        lp_zoo=lp_zoo,
+                                        device=device,
+                                        test_edge_bundle=test_edge_bundle,
+                                        negative_samples=negative_samples,
+                                        wb=wandb,
+                                        return_extra=FLAGS.save_extra)
 
-        results, classification_results = do_all_eval(get_full_model_name(),
-                                                      output_dir=OUTPUT_DIR,
-                                                      valid_models=valid_models,
-                                                      dataset=dataset,
-                                                      edge_split=edge_split,
-                                                      embeddings=embeddings,
-                                                      lp_zoo=lp_zoo,
-                                                      wb=wandb)
-
+        if FLAGS.save_extra:
+            nn_model, results = results
         all_results.append(results)
-        all_class_results.append(classification_results)
 
-    # print(all_results)
-
+    if FLAGS.save_extra:
+        torch.save(
+            {
+                'nn_model': nn_model.state_dict(),
+                'predictor': predictor.state_dict(),
+                'encoder': encoder.state_dict()
+            }, path.join(OUTPUT_DIR, 'extra_data.pt'))
+        torch.save((training_data, val_data, inference_data, data, test_edge_bundle, negative_samples),
+                   path.join(OUTPUT_DIR, 'data_split.pt'))
     agg_results, to_log = merge_multirun_results(all_results)
     wandb.log(to_log)
 
