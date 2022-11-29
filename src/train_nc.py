@@ -14,7 +14,7 @@ from lib.link_predictors import LinkPredictorZoo
 from lib.models import EncoderZoo
 from lib.eval import do_all_eval, do_production_eval, perform_nn_link_eval
 from ogb.linkproppred import PygLinkPropPredDataset
-from lib.training import perform_bgrl_training, perform_cca_ssg_training, perform_gbt_training, perform_simsiam_training, perform_triplet_training
+from lib.training import perform_bgrl_training, perform_cca_ssg_training, perform_gbt_training, perform_triplet_training
 import wandb
 from lib.transforms import VALID_NEG_TRANSFORMS, VALID_TRANSFORMS
 from lib.utils import add_node_feats, do_node_inductive_edge_split, do_transductive_edge_split, is_small_dset, merge_multirun_results, set_random_seeds
@@ -31,7 +31,7 @@ flags.DEFINE_integer('num_eval_splits', 3, 'Number of different train/test split
 
 # Dataset.
 flags.DEFINE_string('model_name_prefix', '', 'Prefix to prepend in front of the model name.')
-flags.DEFINE_enum('base_model', 'bgrl', ['gbt', 'bgrl', 'simsiam', 'triplet', 'cca'], 'Which base model to use.')
+flags.DEFINE_enum('base_model', 'bgrl', ['gbt', 'bgrl', 'triplet', 'cca'], 'Which base model to use.')
 flags.DEFINE_enum('dataset', 'coauthor-cs', [
     'amazon-computers', 'amazon-photos', 'coauthor-cs', 'coauthor-physics', 'wiki-cs', 'ogbl-collab', 'ogbl-ddi',
     'ogbl-ppa', 'cora', 'citeseer', 'squirrel', 'chameleon', 'crocodile', 'texas'
@@ -123,8 +123,6 @@ def get_full_model_name():
 
     if FLAGS.base_model == 'gbt':
         return f'{model_prefix}GBT_{FLAGS.dataset}_lr{FLAGS.lr}_mm{FLAGS.mm}_{edge_prob_str}'
-    elif FLAGS.base_model == 'simsiam':
-        return f'{model_prefix}SimSiam_{FLAGS.dataset}_lr{FLAGS.lr}_mm{FLAGS.mm}_{edge_prob_str}'
     elif FLAGS.base_model == 'triplet':
         return f'{model_prefix}TBGRL_{FLAGS.dataset}_lr{FLAGS.lr}_mm{FLAGS.mm}_{edge_prob_str}'
 

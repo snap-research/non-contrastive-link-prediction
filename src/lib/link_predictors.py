@@ -4,35 +4,45 @@ from torch import nn
 
 
 class LinkPredictorZoo:
+    """Class that allows switching between different link prediction decoders.
+    Two models are currently supported:
+      - prod_mlp: a Hadamard product MLP
+      - mlp: a concatenation-based MLP
+    """
 
     def __init__(self, flags):
-        self.models = {'mlp': MLPLinkPredictor, 'prod_mlp': MLPProdLinkPredictor}
+        self.models = {'mlp': MLPConcatDecoder, 'prod_mlp': MLPProdDecoder}
         self.flags = flags
 
     def init_model(self, model_class, embedding_size):
         flags = self.flags
-        if model_class == MLPLinkPredictor:
+        if model_class == MLPConcatDecoder:
             if flags.adjust_layer_sizes:
-                return MLPLinkPredictor(embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size * 2)
-            return MLPLinkPredictor(embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size)
-        elif model_class == MLPProdLinkPredictor:
-            return MLPProdLinkPredictor(embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size)
+                return MLPConcatDecoder(embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size * 2)
+            return MLPConcatDecoder(embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size)
+        elif model_class == MLPProdDecoder:
+            return MLPProdDecoder(embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size)
 
     def filter_models(self, models: List[str]):
         return [model for model in models if model in self.models]
 
-    # Function to test if the model exists
-    # Raise an error if not
     def check_model(self, model_name):
+        """Checks if a model with the given name exists.
+        Raises an error if not.
+        """
+
         if model_name not in self.models:
             raise ValueError(f'Unknown predictor model "{model_name}"')
 
     def get_model(self, model_name, embedding_size):
+        """Given a model name, return the corresponding model class."""
         self.check_model(model_name)
         return self.init_model(self.models[model_name], embedding_size)
 
 
-class MLPLinkPredictor(torch.nn.Module):
+class MLPConcatDecoder(torch.nn.Module):
+    """Concatentation-based MLP link predictor.
+    """
 
     def __init__(self, embedding_size, hidden_size):
         super().__init__()
@@ -45,7 +55,9 @@ class MLPLinkPredictor(torch.nn.Module):
         return torch.sigmoid(self.forward(x))
 
 
-class MLPProdLinkPredictor(torch.nn.Module):
+class MLPProdDecoder(torch.nn.Module):
+    """Hadamard-product-based MLP link predictor.
+    """
 
     def __init__(self, embedding_size, hidden_size):
         super().__init__()

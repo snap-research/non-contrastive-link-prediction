@@ -17,7 +17,7 @@ import wandb
 
 from lib.data import get_dataset
 from lib.eval import eval_all
-from lib.link_predictors import MLPProdLinkPredictor
+from lib.link_predictors import MLPProdDecoder
 from lib.models import EncoderZoo
 from lib.transforms import VALID_TRANSFORMS
 from ogb.linkproppred import PygLinkPropPredDataset
@@ -142,7 +142,7 @@ def perform_inductive_training(model_name, training_data, val_data, inference_da
 
     model = g_zoo.get_model(FLAGS.graph_encoder_model, input_size, has_features, data.num_nodes,
                             n_feats=data.x.size(1)).to(device)
-    predictor = MLPProdLinkPredictor(representation_size, hidden_size=FLAGS.predictor_hidden_size).to(device)
+    predictor = MLPProdDecoder(representation_size, hidden_size=FLAGS.predictor_hidden_size).to(device)
 
     # optimizer
     optimizer = Adam(list(model.parameters()) + list(predictor.parameters()), lr=FLAGS.lr)
@@ -235,7 +235,7 @@ def perform_transductive_training(model_name, data, edge_split, output_dir, repr
                                   has_features: bool, g_zoo):
     model = g_zoo.get_model(FLAGS.graph_encoder_model, input_size, has_features, data.num_nodes,
                             n_feats=data.x.size(1)).to(device)
-    predictor = MLPProdLinkPredictor(representation_size, hidden_size=FLAGS.predictor_hidden_size).to(device)
+    predictor = MLPProdDecoder(representation_size, hidden_size=FLAGS.predictor_hidden_size).to(device)
 
     # optimizer
     optimizer = Adam(list(model.parameters()) + list(predictor.parameters()), lr=FLAGS.lr)

@@ -17,7 +17,7 @@ from torch.optim.lr_scheduler import CyclicLR
 import numpy as np
 
 from .loss import barlow_twins_loss, cca_ssg_loss
-from .ncl import CCASSG, GraphBarlowTwins, SimSiam
+from .ncl import CCASSG, GraphBarlowTwins
 from .scheduler import CosineDecayScheduler
 from .bgrl import BGRL, TripletBGRL, compute_data_representations_only, compute_representations_only
 from .transforms import compose_transforms

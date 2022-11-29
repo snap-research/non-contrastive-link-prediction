@@ -1,14 +1,11 @@
 import copy
 import math
 import random
-from typing import Callable, List, Tuple, Union
 
 import torch
 from torch_geometric.transforms import Compose
 from torch_geometric.utils import negative_sampling
 from torch_geometric.utils.dropout import dropout_adj
-from torch_geometric.loader.neighbor_sampler import EdgeIndex
-from torch_geometric.transforms import BaseTransform
 
 
 class DropFeatures:
@@ -93,6 +90,8 @@ class DropEdges:
 
 
 class AddEdges:
+    """Perform random edge addition.
+    """
 
     def __init__(self, sample_size_ratio=0.1):
         self.sample_size_ratio = sample_size_ratio
@@ -111,6 +110,8 @@ class AddEdges:
 
 
 class RandomizeFeatures:
+    """Completely randomize the feature matrix (maintain the same size).
+    """
 
     def __init__(self):
         pass
@@ -148,10 +149,12 @@ VALID_NEG_TRANSFORMS = dict({
     'all-choice': ['AllChoice']
 })
 
-VALID_BATCH_TRANSFORMS = dict({'standard': ['BatchDropEdges', 'BatchDropFeatures']})
-
 
 class ChooserTransformation:
+    """Consists of multiple transformations.
+    When this transform is called, each of those transforms is selected and called with
+    uniform probability. This allows for alternating transforms during model training.
+    """
 
     def __init__(self, transformations, transformation_args):
         self.transformations = [transformations[i](*transformation_args[i]) for i in range(len(transformations))]
@@ -165,13 +168,12 @@ class ChooserTransformation:
         return '{}({})'.format(self.__class__.__name__, self.transformations_str)
 
 
-def compose_transforms(transform_name, drop_edge_p, drop_feat_p, mid_drop_p=0.1, create_copy=True, use_batch=False):
-    if use_batch:
-        return compose_batch_transform(transform_name,
-                                       drop_edge_p=drop_edge_p,
-                                       drop_feat_p=drop_feat_p,
-                                       mid_drop_p=mid_drop_p,
-                                       create_copy=create_copy)
+def compose_transforms(transform_name, drop_edge_p, drop_feat_p, create_copy=True):
+    """Given a flag-friendly transform name, returns the corresponding transformation object.
+    Note that transforms include both augmentations and corruptions.
+    The dictionary of valid augmentations can be found in `VALID_TRANSFORMS`.
+    The dictionary of valid corruptions can be foudn in `VALID_NEG_TRANSFORMS`.
+    """
 
     if transform_name in VALID_TRANSFORMS:
         catalog = VALID_TRANSFORMS[transform_name]
@@ -206,95 +208,3 @@ def compose_transforms(transform_name, drop_edge_p, drop_feat_p, mid_drop_p=0.1,
         transforms.append(transform_class(*transform_feats))
 
     return Compose(transforms)
-
-
-###
-# Next 3 functions are from
-# # from https://github.com/pbielak/graph-barlow-twins/blob/ec62580aa89bf3f0d20c92e7549031deedc105ab/gssl/augment.py
-###
-def bernoulli_mask(size: Union[int, Tuple[int, ...]], prob: float):
-    return torch.bernoulli((1 - prob) * torch.ones(size))
-
-
-def mask_features(x: torch.Tensor, p: float) -> torch.Tensor:
-    num_features = x.size(-1)
-    device = x.device
-
-    return bernoulli_mask(size=(1, num_features), prob=p).to(device) * x
-
-
-def drop_edges(edge_index: torch.Tensor, p: float) -> torch.Tensor:
-    num_edges = edge_index.size(-1)
-    device = edge_index.device
-
-    mask = bernoulli_mask(size=num_edges, prob=p).to(device) == 1.
-
-    return edge_index[:, mask]
-
-
-###
-
-
-# batch transforms take 2 inputs
-# x: the feature matrix
-# adjs: the list of Edge indexes
-class BatchMaskFeatures:
-
-    def __init__(self, p=None):
-        assert 0. < p < 1., 'Dropout probability has to be between 0 and 1, but got %.2f' % p
-        self.p = p
-
-    def __call__(self, x: torch.Tensor, adjs: Union[List[EdgeIndex], List[torch.Tensor]]):
-        return mask_features(x, self.p), adjs
-
-    def __repr__(self):
-        return '{}(p={})'.format(self.__class__.__name__, self.p)
-
-
-class BatchDropEdges:
-
-    def __init__(self, p=None):
-        assert 0. < p < 1., 'Dropout probability has to be between 0 and 1, but got %.2f' % p
-        self.p = p
-
-    def __call__(self, x: torch.Tensor, adjs: List[EdgeIndex]):
-        return x, [drop_edges(adj.edge_index, self.p) for adj in adjs]
-
-    def __repr__(self):
-        return '{}(p={})'.format(self.__class__.__name__, self.p)
-
-
-class BatchCompose(BaseTransform):
-    """Composes several transforms together.
-
-    Args:
-        transforms (List[Callable]): List of transforms to compose.
-    """
-
-    def __init__(self, transforms: List[Callable]):
-        self.transforms = transforms
-
-    def __call__(self, x: torch.Tensor, adjs: List[EdgeIndex]):
-        for transform in self.transforms:
-            x, adjs = transform(x, adjs)
-        return x, adjs
-
-    def __repr__(self) -> str:
-        args = [f'  {transform}' for transform in self.transforms]
-        return '{}([\n{}\n])'.format(self.__class__.__name__, ',\n'.join(args))
-
-
-def compose_batch_transform(transform_name, drop_edge_p, drop_feat_p, mid_drop_p=0.1, create_copy=True):
-    if transform_name not in VALID_BATCH_TRANSFORMS:
-        raise ValueError(f'{transform_name} is not a valid batch transformation.')
-
-    feats = {'BatchDropEdges': (BatchDropEdges, [drop_edge_p]), 'BatchDropFeatures': (BatchMaskFeatures, [drop_feat_p])}
-
-    catalog = VALID_BATCH_TRANSFORMS[transform_name]
-
-    transforms = []
-    for transform_name in catalog:
-        transform_class, transform_feats = feats[transform_name]
-        transforms.append(transform_class(*transform_feats))
-
-    return BatchCompose(transforms)

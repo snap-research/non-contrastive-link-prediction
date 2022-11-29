@@ -5,11 +5,15 @@ import torch.nn.functional as F
 EPS = 1e-15
 
 
-# From the official Graph Barlow Twins PyTorch implementation
 def barlow_twins_loss(
     z_a: torch.Tensor,
     z_b: torch.Tensor,
 ) -> torch.Tensor:
+    """Computes the Barlow Twins loss on the two input matrices.
+    From the offical GBT implementation at:
+    https://github.com/pbielak/graph-barlow-twins/blob/ec62580aa89bf3f0d20c92e7549031deedc105ab/gssl/loss.py
+    """
+
     batch_size = z_a.size(0)
     feature_dim = z_a.size(1)
     _lambda = 1 / feature_dim
@@ -28,6 +32,11 @@ def barlow_twins_loss(
     return loss
 
 def cca_ssg_loss(z1, z2, cca_lambda, N):
+    """Computes the CCA-SSG loss.
+    From the official CCA-SSG implemntation at:
+    https://github.com/hengruizhang98/CCA-SSG/blob/cea6e73962c9f2c863d1abfcdf71a2a31de8f983/main.py#L75
+    """
+
     c = torch.mm(z1.T, z2)
     c1 = torch.mm(z1.T, z1)
     c2 = torch.mm(z2.T, z2)

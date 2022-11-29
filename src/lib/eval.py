@@ -33,6 +33,8 @@ def eval_hits(y_pred_pos, y_pred_neg, K):
         For each positive target node, the negative target nodes are the same.
         y_pred_neg is an array.
         rank y_pred_pos[i] against y_pred_neg for each i
+        From:
+        https://github.com/snap-stanford/ogb/blob/1c875697fdb20ab452b2c11cf8bfa2c0e88b5ad3/ogb/linkproppred/evaluate.py#L214
     '''
 
     if len(y_pred_neg) < K:
@@ -49,6 +51,8 @@ def eval_mrr(y_pred_pos, y_pred_neg, single_val=True):
         compute mrr
         y_pred_neg is an array with shape (batch size, num_entities_neg).
         y_pred_pos is an array with shape (batch size, )
+        From:
+        https://github.com/snap-stanford/ogb/blob/1c875697fdb20ab452b2c11cf8bfa2c0e88b5ad3/ogb/linkproppred/evaluate.py#L237
     '''
     y_pred = torch.cat([y_pred_pos.view(-1, 1), y_pred_neg], dim=1)
     argsort = torch.argsort(y_pred, dim=1, descending=True)
@@ -63,12 +67,26 @@ def eval_mrr(y_pred_pos, y_pred_neg, single_val=True):
 
 
 def eval_roc(y_pred_pos, y_pred_neg):
+    """Computes the ROC-AUC.
+    From: https://github.com/snap-stanford/ogb/blob/1c875697fdb20ab452b2c11cf8bfa2c0e88b5ad3/ogb/linkproppred/evaluate.py#L280
+    """
     ground_truth = torch.concat((torch.ones(y_pred_pos.size(0)), torch.zeros(y_pred_neg.size(0))))
     preds = torch.concat((y_pred_pos, y_pred_neg))
     return {'roc': roc_auc_score(ground_truth.cpu(), preds.cpu())}
 
 
 def eval_all(y_pred_pos, y_pred_neg):
+    """Computes the following evaluation metrics:
+        - Hits@3
+        - Hits@10
+        - Hits@20
+        - Hits@30
+        - Hits@50
+        - Hits@100
+        - ROC-AUC
+    and returns a dictionary with all of the metrics.
+    """
+
     return {
         **eval_hits(y_pred_pos, y_pred_neg, 3),
         **eval_hits(y_pred_pos, y_pred_neg, 10),
@@ -77,7 +95,6 @@ def eval_all(y_pred_pos, y_pred_neg):
         **eval_hits(y_pred_pos, y_pred_neg, 50),
         **eval_hits(y_pred_pos, y_pred_neg, 100),
         **eval_roc(y_pred_pos, y_pred_neg)
-        # **eval_mrr(y_pred_pos, y_pred_neg),
     }
 
 

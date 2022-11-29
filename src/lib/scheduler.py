@@ -2,6 +2,10 @@ import numpy as np
 
 
 class CosineDecayScheduler:
+    """A cosine decay scheduler that can be used for both learning rate
+    and EMA weight averaging.
+    This class is from https://github.com/nerdslab/bgrl/blob/dec99f8c605e3c4ae2ece57f3fa1d41f350d11a9/bgrl/scheduler.py
+    """
 
     def __init__(self, max_val, warmup_steps, total_steps):
         self.max_val = max_val
