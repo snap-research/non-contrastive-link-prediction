@@ -102,7 +102,7 @@ def compute_representations_only(net, dataset, device, has_features=True, featur
     reps = torch.cat(reps, dim=0)
     return reps
 
-def compute_data_representations_only(net, data, device, has_features=True, feature_type='degree'):
+def compute_data_representations_only(net, data, device, has_features=True):
     r"""Pre-computes the representations for the entire dataset.
     Does not include node labels.
 
@@ -116,8 +116,6 @@ def compute_data_representations_only(net, data, device, has_features=True, feat
         if data.x is not None:
             print('[WARNING] features overidden in adj matrix')
         data.x = net.get_node_feats().weight.data
-    # elif data.x is None:
-    #     data = add_node_feats(data, device=device, type=feature_type)
 
     with torch.no_grad():
         reps.append(net(data))

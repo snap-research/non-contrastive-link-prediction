@@ -19,8 +19,8 @@ from lib.data import get_dataset
 from lib.eval import eval_all
 from lib.link_predictors import MLPProdDecoder
 from lib.models import EncoderZoo
-from lib.transforms import VALID_TRANSFORMS
 from ogb.linkproppred import PygLinkPropPredDataset
+import lib.flags as FlagHelper
 
 from lib.utils import do_transductive_edge_split, do_node_inductive_edge_split, merge_multirun_results, set_random_seeds, write_results
 
@@ -31,45 +31,10 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 FLAGS = flags.FLAGS
 
-# Seeding
-flags.DEFINE_integer('model_seed', None, 'Random seed used for model initialization and training.')
-flags.DEFINE_integer('split_seed', 1, 'Split seed used to generate train/val/test split.')
-
-# Dataset.
-flags.DEFINE_enum('dataset', 'coauthor-cs',
-                  ['amazon-computers', 'amazon-photos', 'coauthor-cs', 'coauthor-physics', 'cora', 'citeseer'],
-                  'Which graph dataset to use.')
-flags.DEFINE_enum('split_method', 'transductive', ['inductive', 'transductive'],
-                  'Which method to use to split the dataset (inductive or transductive).')
-flags.DEFINE_enum('link_pred_model', 'mlp', ['mlp', 'prod_mlp', 'dot'], 'Which link prediction model to use')
-flags.DEFINE_enum('graph_encoder_model', 'gcn', ['gcn', 'sage', 'std-sage'], 'Which graph encoder model to use')
-flags.DEFINE_enum('graph_transforms', 'standard', list(VALID_TRANSFORMS.keys()), 'Which graph dataset to use.')
-flags.DEFINE_string('dataset_dir', './data', 'Where the dataset resides.')
-
-# Architecture.
-flags.DEFINE_multi_integer('graph_encoder_layer', [256, 128], 'Conv layer sizes.')
-flags.DEFINE_integer('predictor_hidden_size', 512, 'Hidden size of projector.')
-flags.DEFINE_integer('num_runs', 5, 'Number of times to train/evaluate the model and re-run')
-flags.DEFINE_string('model_name_prefix', '', 'Prefix to prepend in front of the model name.')
-
-# Training hyperparameters.
-flags.DEFINE_integer('epochs', 10000, 'The number of training epochs.')
-flags.DEFINE_float('lr', 1e-3, 'The learning rate for model training.')
-flags.DEFINE_float('weight_decay', 1e-5, 'The value of the weight decay for training.')
-flags.DEFINE_float('mm', 0.99, 'The momentum for moving average.')
+# Define shared flags
+FlagHelper.define_flags('E2E-GCN')
+# flags.DEFINE_float('mm', 0.99, 'The momentum for moving average.')
 flags.DEFINE_integer('lr_warmup_epochs', 1000, 'Warmup period for learning rate.')
-
-# Logging and checkpoint.
-flags.DEFINE_string('logdir', None, 'Where the checkpoint and logs are stored.')
-flags.DEFINE_integer('log_steps', 10, 'Log information at every log_steps.')
-
-# Link prediction model-specific flags
-# MLP:
-flags.DEFINE_integer('link_mlp_hidden_size', 128, 'Size of hidden layer in MLP for evaluation')
-flags.DEFINE_float('link_mlp_lr', 0.01, 'Size of hidden layer in MLP for evaluation')
-flags.DEFINE_integer('link_nn_epochs', 10000, 'Number of epochs in the NN for evaluation')
-flags.DEFINE_enum('trivial_neg_sampling', 'false', ['true', 'false'], 'Whether or not to do trivial random sampling.')
-flags.DEFINE_float('big_split_ratio', 0.2, 'Split ratio to use for larger datasets')
 
 
 def get_full_model_name():
@@ -142,7 +107,7 @@ def perform_inductive_training(model_name, training_data, val_data, inference_da
 
     model = g_zoo.get_model(FLAGS.graph_encoder_model, input_size, has_features, data.num_nodes,
                             n_feats=data.x.size(1)).to(device)
-    predictor = MLPProdDecoder(representation_size, hidden_size=FLAGS.predictor_hidden_size).to(device)
+    predictor = MLPProdDecoder(representation_size, hidden_size=FLAGS.link_mlp_hidden_size).to(device)
 
     # optimizer
     optimizer = Adam(list(model.parameters()) + list(predictor.parameters()), lr=FLAGS.lr)
@@ -235,7 +200,7 @@ def perform_transductive_training(model_name, data, edge_split, output_dir, repr
                                   has_features: bool, g_zoo):
     model = g_zoo.get_model(FLAGS.graph_encoder_model, input_size, has_features, data.num_nodes,
                             n_feats=data.x.size(1)).to(device)
-    predictor = MLPProdDecoder(representation_size, hidden_size=FLAGS.predictor_hidden_size).to(device)
+    predictor = MLPProdDecoder(representation_size, hidden_size=FLAGS.link_mlp_hidden_size).to(device)
 
     # optimizer
     optimizer = Adam(list(model.parameters()) + list(predictor.parameters()), lr=FLAGS.lr)
@@ -308,10 +273,8 @@ def perform_transductive_training(model_name, data, edge_split, output_dir, repr
 # Main
 ######
 def main(_):
-    if FLAGS.logdir is None:
-        new_logdir = f'./runs/{FLAGS.dataset}'
-        log.info(f'No logdir set, using default of {new_logdir}')
-        FLAGS.logdir = new_logdir
+    FlagHelper.get_dynamic_defaults()
+    FLAGS.link_pred_model = FLAGS.link_pred_model[0]
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     log.info('Using {} for training.'.format(device))
@@ -322,12 +285,7 @@ def main(_):
     log.info(f'Found link pred validation models: {FLAGS.link_pred_model}')
     log.info(f'Using encoder model: {FLAGS.graph_encoder_model}')
 
-    # set random seed
-    if FLAGS.model_seed is not None:
-        log.info('Random seed set to {}.'.format(FLAGS.model_seed))
-        set_random_seeds(random_seed=FLAGS.model_seed)
-
-    wandb.init(project=f'sup-gnn-prod', config={'model_name': get_full_model_name(), **FLAGS.flag_values_dict()})
+    wandb.init(project=f'sup-gnn', config={'model_name': get_full_model_name(), **FLAGS.flag_values_dict()})
 
     # create log directory
     OUTPUT_DIR = os.path.join(FLAGS.logdir, f'{get_full_model_name()}_{wandb.run.id}')

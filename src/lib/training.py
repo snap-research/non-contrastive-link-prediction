@@ -140,7 +140,6 @@ def perform_inductive_margin_training(train_data, val_data, data,
 
     # scheduler
     lr_scheduler = CosineDecayScheduler(FLAGS.lr, FLAGS.lr_warmup_epochs, FLAGS.epochs)
-    mm_scheduler = CosineDecayScheduler(1 - FLAGS.mm, 0, FLAGS.epochs)
 
     #####
     # Train & eval functions
@@ -156,9 +155,6 @@ def perform_inductive_margin_training(train_data, val_data, data,
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
-        # update momentum
-        mm = 1 - mm_scheduler.get(step)
-
         if not has_features:
             raise NotImplementedError()
 
@@ -170,7 +166,7 @@ def perform_inductive_margin_training(train_data, val_data, data,
         optimizer.step()
 
         # log scalars
-        wandb.log({'curr_lr': lr, 'curr_mm': mm, 'train_loss': loss, 'step': step, 'epoch': step}, step=step)
+        wandb.log({'curr_lr': lr, 'train_loss': loss, 'step': step, 'epoch': step}, step=step)
 
         return loss
 
@@ -254,10 +250,6 @@ def perform_transductive_margin_training(data, edge_split, output_dir, device, i
 
     # scheduler
     lr_scheduler = CosineDecayScheduler(FLAGS.lr, FLAGS.lr_warmup_epochs, FLAGS.epochs)
-    mm_scheduler = CosineDecayScheduler(1 - FLAGS.mm, 0, FLAGS.epochs)
-
-    # we already filtered out test/val edges
-    train_edge = data.edge_index
 
     #####
     # Train & eval functions
@@ -272,9 +264,6 @@ def perform_transductive_margin_training(data, edge_split, output_dir, device, i
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
-        # update momentum
-        mm = 1 - mm_scheduler.get(step)
-
         if not has_features:
             data.x = model.get_node_feats().weight.data.clone().detach()
 
@@ -288,7 +277,7 @@ def perform_transductive_margin_training(data, edge_split, output_dir, device, i
         optimizer.step()
 
         # log scalars
-        wandb.log({'curr_lr': lr, 'curr_mm': mm, 'train_loss': loss, 'step': step, 'epoch': step}, step=step)
+        wandb.log({'curr_lr': lr, 'train_loss': loss, 'step': step, 'epoch': step}, step=step)
 
         return loss
 
@@ -619,7 +608,6 @@ def perform_bgrl_training(data,
                           has_features: bool,
                           g_zoo,
                           dataset=None,
-                          num_eval_splits=None,
                           train_cb=None,
                           extra_return=False):
     """Trains Bootstrapped Representation Learning on Graphs (BGRL).

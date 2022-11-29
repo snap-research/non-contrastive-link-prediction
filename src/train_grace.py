@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 from torch_geometric.utils import dropout_adj
 from torch_geometric.nn import GCNConv
+from lib.bgrl import compute_data_representations_only, compute_representations_only
 from lib.data import get_dataset
 from ogb.linkproppred import PygLinkPropPredDataset
 
@@ -18,48 +19,21 @@ from lib.link_predictors import LinkPredictorZoo
 from torch.utils.tensorboard import SummaryWriter
 from lib.models import GraceEncoder, GraceModel  # type: ignore
 from lib.training import get_time_bundle
+import lib.flags as FlagHelper
 
 from lib.utils import do_transductive_edge_split, is_small_dset, do_node_inductive_edge_split, merge_multirun_results
+
 ######
 # Flags
 ######
 FLAGS = flags.FLAGS
-flags.DEFINE_enum('dataset', 'citeseer', [
-    'amazon-computers', 'amazon-photos', 'coauthor-cs', 'coauthor-physics', 'wiki-cs',
-    'ogbl-collab', 'ogbl-ddi', 'ogbl-ppa', 'cora', 'citeseer', 'squirrel', 'chameleon', 'crocodile',
-    'texas'
-], 'Which graph dataset to use.')
+
+# Shared flags
+FlagHelper.define_flags('GRACE')
+
+# GRACE-specific flags
 flags.DEFINE_enum('activation_type', 'prelu', ['prelu', 'relu'], 'Which activation type to use')
-flags.DEFINE_enum('graph_encoder_model', 'GCNConv', ['GCNConv'],
-                  'Which type of graph encoder to use')
-
-flags.DEFINE_string('model_name_prefix', '', 'Prefix to prepend to the output directory')
-flags.DEFINE_integer('split_seed', 234, 'Seed to use for dataset splitting')
-flags.DEFINE_multi_enum('link_pred_model', ['prod_mlp'],
-                        ['lr', 'mlp', 'cosine', 'seal', 'prod_lr', 'prod_mlp'],
-                        'Which link prediction model to use')
-flags.DEFINE_bool('do_classification_eval', False,
-                  'Whether or not to evaluate the model\'s classification performance')
-flags.DEFINE_float('lr', 1e-5, 'The learning rate for model training.')
-flags.DEFINE_bool('batch_links', False, 'Whether or not to perform batching on links')
-flags.DEFINE_bool('debug', False,
-                  'Whether or not we are debugging. No effect, just used for logging purposes')
-
-flags.DEFINE_integer('epochs', 10000, 'The number of training epochs.')
-flags.DEFINE_float('weight_decay', 1e-5, 'The value of the weight decay for training.')
-flags.DEFINE_integer('link_mlp_hidden_size', 128, 'Size of hidden layer in MLP for evaluation')
-flags.DEFINE_float('link_mlp_lr', 0.01, 'Size of hidden layer in MLP for evaluation')
-flags.DEFINE_float('big_split_ratio', 0.2, 'Split ratio to use for larger datasets')
-flags.DEFINE_integer('link_nn_epochs', 8000, 'Number of epochs in the NN for evaluation')
-flags.DEFINE_integer('num_runs', 5, 'Number of times to train/evaluate the model and re-run')
-
-flags.DEFINE_float('drop_edge_p_1', 0., 'Probability of edge dropout 1.')
-flags.DEFINE_float('drop_feat_p_1', 0., 'Probability of node feature dropout 1.')
-flags.DEFINE_float('drop_edge_p_2', 0., 'Probability of edge dropout 2.')
-flags.DEFINE_float('drop_feat_p_2', 0., 'Probability of node feature dropout 2.')
 flags.DEFINE_float('tau', 0., 'GRACE parameter')
-flags.DEFINE_enum('split_method', 'transductive', ['inductive', 'transductive'],
-                  'Which method to use to split the dataset (inductive or transductive).')
 
 def drop_feature(x, drop_prob):
     """GRACE feature dropping function.
@@ -72,7 +46,7 @@ def drop_feature(x, drop_prob):
     return x
 
 
-def train(model: GraceModel, optimizer, x, edge_index, drop_edge_rate_1, drop_edge_rate_2,
+def train_grace(model: GraceModel, optimizer, x, edge_index, drop_edge_rate_1, drop_edge_rate_2,
           drop_feature_rate_1, drop_feature_rate_2):
     model.train()
     optimizer.zero_grad()
@@ -89,7 +63,9 @@ def train(model: GraceModel, optimizer, x, edge_index, drop_edge_rate_1, drop_ed
 
     return loss.item()
 
-
+######
+# Main
+######
 def main(_):
     model_prefix = ''
     if FLAGS.model_name_prefix:
@@ -109,7 +85,7 @@ def main(_):
     num_hidden = 256
     num_proj_hidden = 256
     activation = ({'relu': F.relu, 'prelu': nn.PReLU()})[FLAGS.activation_type]
-    base_model = ({'GCNConv': GCNConv})[FLAGS.graph_encoder_model]
+    base_model = ({'gcn': GCNConv})[FLAGS.graph_encoder_model]
     num_layers = 2
 
     drop_edge_rate_1 = FLAGS.drop_edge_p_1
@@ -177,7 +153,7 @@ def main(_):
                 train_x = data.x
                 train_ei = data.edge_index
 
-            loss = train(model=model,
+            loss = train_grace(model=model,
                          optimizer=optimizer,
                          x=train_x,
                          edge_index=train_ei,
@@ -215,6 +191,8 @@ def main(_):
                                         negative_samples=negative_samples,
                                         wb=wandb)
         else: # transductive
+            representations = compute_representations_only(encoder, dataset, device)
+            embeddings = torch.nn.Embedding.from_pretrained(representations)
             results, _ = do_all_eval(model_name,
                                                       output_dir=OUTPUT_DIR,
                                                       valid_models=valid_models,
