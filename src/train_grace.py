@@ -13,10 +13,10 @@ from torch_geometric.nn import GCNConv
 from lib.data import get_dataset
 from ogb.linkproppred import PygLinkPropPredDataset
 
-from grace.model import Encoder, Model, drop_feature
 from lib.eval import do_all_eval, do_production_eval
 from lib.link_predictors import LinkPredictorZoo
-from torch.utils.tensorboard import SummaryWriter  # type: ignore
+from torch.utils.tensorboard import SummaryWriter
+from lib.models import GraceEncoder, GraceModel  # type: ignore
 from lib.training import get_time_bundle
 
 from lib.utils import do_transductive_edge_split, is_small_dset, do_node_inductive_edge_split, merge_multirun_results
@@ -61,8 +61,18 @@ flags.DEFINE_float('tau', 0., 'GRACE parameter')
 flags.DEFINE_enum('split_method', 'transductive', ['inductive', 'transductive'],
                   'Which method to use to split the dataset (inductive or transductive).')
 
+def drop_feature(x, drop_prob):
+    """GRACE feature dropping function.
+    From: https://github.com/CRIPAC-DIG/GRACE/blob/51b44961b68b2f38c60f85cf83db13bed8fd0780/model.py#L120
+    """
+    drop_mask = torch.empty((x.size(1),), dtype=torch.float32, device=x.device).uniform_(0, 1) < drop_prob
+    x = x.clone()
+    x[:, drop_mask] = 0
 
-def train(model: Model, optimizer, x, edge_index, drop_edge_rate_1, drop_edge_rate_2,
+    return x
+
+
+def train(model: GraceModel, optimizer, x, edge_index, drop_edge_rate_1, drop_edge_rate_2,
           drop_feature_rate_1, drop_feature_rate_2):
     model.train()
     optimizer.zero_grad()
@@ -147,12 +157,12 @@ def main(_):
         lp_zoo = LinkPredictorZoo(FLAGS)
         valid_models = lp_zoo.filter_models(FLAGS.link_pred_model)
 
-        encoder = Encoder(dataset.num_features,
+        encoder = GraceEncoder(dataset.num_features,
                           num_hidden,
                           activation,
                           base_model=base_model,
                           k=num_layers).to(device)
-        model = Model(encoder, num_hidden, num_proj_hidden, tau).to(device)
+        model = GraceModel(encoder, num_hidden, num_proj_hidden, tau).to(device)
         optimizer = torch.optim.Adam(model.parameters(),
                                      lr=learning_rate,
                                      weight_decay=weight_decay)

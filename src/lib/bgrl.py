@@ -3,7 +3,7 @@ import copy
 import torch
 from absl import flags
 
-from grace.model import Encoder
+from .models import GraceEncoder
 
 FLAGS = flags.FLAGS
 
@@ -13,6 +13,8 @@ from torch_geometric.loader import NeighborLoader
 
 class BGRL(torch.nn.Module):
     r"""BGRL architecture for Graph representation learning.
+    From:
+    https://github.com/nerdslab/bgrl/blob/dec99f8c605e3c4ae2ece57f3fa1d41f350d11a9/bgrl/bgrl.py
 
     Args:
         encoder (torch.nn.Module): Encoder network to be duplicated and used in both online and target networks.
@@ -92,7 +94,7 @@ def compute_representations_only(net, dataset, device, has_features=True, featur
             data = add_node_feats(data, device=device, type=feature_type)
 
         with torch.no_grad():
-            if isinstance(net, Encoder):
+            if isinstance(net, GraceEncoder):
                 reps.append(net(data.x, data.edge_index))
             else:
                 reps.append(net(data))
@@ -125,6 +127,10 @@ def compute_data_representations_only(net, data, device, has_features=True, feat
 
 
 class TripletBGRL(torch.nn.Module):
+    """Triplet-BGRL class.
+    Similar to the BGRL class, but contains a forward_target function
+    that allows passing additional data through the target network.
+    """
 
     def __init__(self, encoder, predictor, has_features):
         super().__init__()
