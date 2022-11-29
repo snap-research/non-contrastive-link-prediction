@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from lib.data import get_dataset
 from lib.link_predictors import LinkPredictorZoo
 from lib.models import EncoderZoo
-from lib.training import perform_gcn_margin_training, perform_inductive_margin_training
+from lib.training import perform_transductive_margin_training, perform_inductive_margin_training
 from lib.eval import do_production_eval
 from ogb.linkproppred import PygLinkPropPredDataset
 from lib.transforms import VALID_TRANSFORMS
@@ -213,7 +213,7 @@ def main(_):
         print('=' * 30)
 
         if FLAGS.split_method == 'transductive':
-            encoder, representations, time_bundle = perform_gcn_margin_training(
+            encoder, representations, time_bundle = perform_transductive_margin_training(
                 data, edge_split, OUTPUT_DIR, device, input_size, has_features, g_zoo)
 
             if FLAGS.normalize_embeddings:
@@ -222,7 +222,7 @@ def main(_):
             embeddings = nn.Embedding.from_pretrained(representations, freeze=True)
         else:  # inductive
             encoder, representations, time_bundle = perform_inductive_margin_training(
-                training_data, val_data, inference_data, data, test_edge_bundle, negative_samples,
+                training_data, val_data, data,
                 OUTPUT_DIR, device, input_size, has_features, g_zoo)
 
             results = do_production_eval(model_name=get_full_model_name(),

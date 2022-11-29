@@ -13,7 +13,6 @@ import wandb
 from torch_geometric.loader import NeighborLoader
 import torch.nn.functional as F
 import logging
-from torch.nn import TripletMarginWithDistanceLoss
 from torch.optim.lr_scheduler import CyclicLR
 import numpy as np
 
@@ -31,45 +30,22 @@ log.setLevel(logging.DEBUG)
 
 
 def get_time_bundle(times):
+    """Given a list of times, returns a tuple containing the
+    total time, standard deviation, mean time, and a numpy array of the times.
+    """
     times = np.array(times)
     std_time, mean_time = np.std(times), np.mean(times)
     total_time = np.sum(times)
     return (total_time, std_time, mean_time, times)
 
 
-class SAGE(nn.Module):
-
-    def __init__(self, in_channels, hidden_channels, num_layers):
-        super().__init__()
-        self.num_layers = num_layers
-        self.convs = nn.ModuleList()
-        for i in range(num_layers):
-            in_channels = in_channels if i == 0 else hidden_channels
-            self.convs.append(SAGEConv(in_channels, hidden_channels))
-
-    def forward(self, x, adjs):
-        for i, (edge_index, _, size) in enumerate(adjs):
-            x_target = x[:size[1]]  # Target nodes are always placed first.
-            x = self.convs[i]((x, x_target), edge_index)
-            if i != self.num_layers - 1:
-                x = x.relu()
-                x = F.dropout(x, p=0.5, training=self.training)
-        return x
-
-    def full_forward(self, x, edge_index):
-        for i, conv in enumerate(self.convs):
-            x = conv(x, edge_index)
-            if i != self.num_layers - 1:
-                x = x.relu()
-                x = F.dropout(x, p=0.5, training=self.training)
-        return x
-
-
-def bdot(a, b):
-    return torch.bmm(a.view(a.size(0), 1, -1), b.view(b.size(0), -1, 1))
-
-
-def edges2dict(edges, n_nodes, n_samples):
+def edge2lookup(edges, n_nodes, n_samples):
+    """Utility function for margin loss negative sampling.
+    Takes in the negative edges, the number of nodes, and the number of desired
+    samples per node.
+    Returns a torch.Tensor containing the negative neighbors for each node, as given
+    by the negative edges passed in.
+    """
     out = torch.ones((n_nodes, n_samples), dtype=torch.long, device=edges.device) * -1
     for edge in edges.T:
         l, r = edge
@@ -86,10 +62,16 @@ def edges2dict(edges, n_nodes, n_samples):
 
 
 def compute_margin_loss(device, n_nodes, edge_index, row, col, model_out):
+    """Performs negative sampling and computes the margin loss on the graph represented by
+    edge_index.
+    It uses the embeddings produced by the model (`model_out`), which should contain autograd
+    information to allow for backprop of the loss.
+    """
+
     neg_dists = None
     for _ in range(FLAGS.neg_samples):
         neg_edges = negative_sampling(edge_index, n_nodes, n_nodes)
-        lookup = edges2dict(neg_edges, n_nodes, 1)
+        lookup = edge2lookup(neg_edges, n_nodes, 1)
 
         neg_embed = model_out[lookup[:, 0]]
         new_dists = F.logsigmoid(F.cosine_similarity(model_out, neg_embed))
@@ -120,8 +102,12 @@ def compute_margin_loss(device, n_nodes, edge_index, row, col, model_out):
     return torch.mean(torch.clamp(neg_dists - pos_dists + FLAGS.margin, min=0))
 
 
-def perform_inductive_margin_training(train_data, val_data, inference_data, data, test_edge_bundle, negative_samples,
+def perform_inductive_margin_training(train_data, val_data, data,
                                       output_dir, device, input_size: int, has_features: bool, g_zoo):
+    """Trains the ML-GCN on the inductive data and returns the trained model.
+    Also returns timing information.
+    """
+
     train_data = train_data.to(device)
 
     training_edge = train_data.edge_index
@@ -228,16 +214,17 @@ def perform_inductive_margin_training(train_data, val_data, inference_data, data
     # save encoder weights
     torch.save({'model': model.state_dict()}, os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}.pt'))
     model = model.eval()
-    # with torch.no_grad():
-    #     representations = (model.full_forward(data.x, data.edge_index))
     representations = compute_data_representations_only(model, train_data, device, has_features=has_features)
     torch.save(representations, os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}-repr.pt'))
 
     return model, representations, time_bundle
 
 
-def perform_gcn_margin_training(data, edge_split, output_dir, device, input_size: int, has_features: bool,
+def perform_transductive_margin_training(data, edge_split, output_dir, device, input_size: int, has_features: bool,
                                 g_zoo):
+    """Trains ML-GCN on the transductive data and returns the trained model.
+    Also returns timing information.
+    """
     valid_edge = edge_split['valid']['edge'].T.to(device)
 
     model = g_zoo.get_model(FLAGS.graph_encoder_model,
@@ -353,6 +340,9 @@ def perform_gcn_margin_training(data, edge_split, output_dir, device, input_size
 
 
 def perform_gbt_training(data, output_dir, device, input_size: int, has_features: bool, g_zoo):
+    """Train a Graph Barlow Twins model on the data.
+    Works for both the transductive and inductive settings (only difference is the data passed in).
+    """
     # prepare transforms
     transform_1 = compose_transforms(FLAGS.graph_transforms,
                                      drop_edge_p=FLAGS.drop_edge_p_1,
@@ -366,7 +356,6 @@ def perform_gbt_training(data, output_dir, device, input_size: int, has_features
                               has_features,
                               data.num_nodes,
                               n_feats=data.x.size(1))
-    # predictor = MLP_Predictor(representation_size, representation_size, hidden_size=FLAGS.predictor_hidden_size)
     model = GraphBarlowTwins(encoder, has_features=has_features).to(device)
 
     # optimizer
@@ -423,6 +412,9 @@ def perform_gbt_training(data, output_dir, device, input_size: int, has_features
 
 
 def perform_cca_ssg_training(data, output_dir, device, input_size: int, has_features: bool, g_zoo):
+    """Train a CCA-SSG model on the data.
+    Works for both the transductive and inductive settings (only difference is the data passed in).
+    """
     # prepare transforms
     transform_1 = compose_transforms(FLAGS.graph_transforms,
                                      drop_edge_p=FLAGS.drop_edge_p_1,
@@ -491,86 +483,6 @@ def perform_cca_ssg_training(data, output_dir, device, input_size: int, has_feat
     return encoder, representations, time_bundle
 
 
-def perform_simsiam_training(data,
-                             output_dir,
-                             representation_size,
-                             device,
-                             input_size: int,
-                             has_features: bool,
-                             g_zoo,
-                             train_cb=None):
-    # prepare transforms
-    transform_1 = compose_transforms(FLAGS.graph_transforms,
-                                     drop_edge_p=FLAGS.drop_edge_p_1,
-                                     drop_feat_p=FLAGS.drop_feat_p_1)
-    transform_2 = compose_transforms(FLAGS.graph_transforms,
-                                     drop_edge_p=FLAGS.drop_edge_p_2,
-                                     drop_feat_p=FLAGS.drop_feat_p_2)
-
-    encoder = g_zoo.get_model(FLAGS.graph_encoder_model,
-                              input_size,
-                              has_features,
-                              data.num_nodes,
-                              n_feats=data.x.size(1))
-    predictor = MLP_Predictor(representation_size, representation_size, hidden_size=FLAGS.predictor_hidden_size)
-    model = SimSiam(encoder, predictor, has_features=has_features).to(device)
-
-    # optimizer
-    optimizer = AdamW(model.trainable_parameters(), lr=FLAGS.lr, weight_decay=FLAGS.weight_decay)
-
-    # scheduler
-    lr_scheduler = CosineDecayScheduler(FLAGS.lr, FLAGS.lr_warmup_epochs, FLAGS.epochs)
-
-    #####
-    # Train & eval functions
-    #####
-    def full_train(step):
-        model.train()
-
-        # update learning rate
-        lr = lr_scheduler.get(step)
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
-
-        # forward
-        optimizer.zero_grad()
-
-        if not has_features:
-            data.x = encoder.get_node_feats().weight.data.clone().detach()
-        x1, x2 = transform_1(data), transform_2(data)
-
-        q1, y2 = model(x1, x2)
-        q2, y1 = model(x2, x1)
-
-        loss = 2 - F.cosine_similarity(q1, y2.detach()).mean() - F.cosine_similarity(q2, y1.detach()).mean()
-        loss.backward()
-
-        # update online network
-        optimizer.step()
-
-        # log scalars
-        wandb.log({'curr_lr': lr, 'train_loss': loss, 'step': step, 'epoch': epoch}, step=step)
-
-    # training loop
-    for epoch in tqdm(range(1, FLAGS.epochs + 1)):
-        if train_cb is not None:
-            train_cb(epoch - 1, model)
-        full_train(epoch - 1)
-
-    # save encoder weights
-    torch.save({'model': model.encoder.state_dict()}, os.path.join(output_dir, f'simsiam-{FLAGS.dataset}.pt'))
-    encoder = copy.deepcopy(model.encoder.eval())
-    representations = compute_data_representations_only(encoder, data, device, has_features=has_features)
-    torch.save(representations, os.path.join(output_dir, f'simsiam-{FLAGS.dataset}-repr.pt'))
-
-    return encoder, representations
-
-
-def cosine_distance(A, B):
-    sims = cosine_similarity(A, B)
-    return -(sims + 1) / 2 + 1
-
-
 def perform_triplet_training(data,
                              output_dir,
                              representation_size,
@@ -579,6 +491,10 @@ def perform_triplet_training(data,
                              has_features: bool,
                              g_zoo,
                              train_cb=None):
+    """Perform Triplet-BGRL (T-BGRL) training.
+    Works for both the transductive and inductive settings.
+    """
+
     # prepare transforms
     transform_1 = compose_transforms(FLAGS.graph_transforms,
                                      drop_edge_p=FLAGS.drop_edge_p_1,
@@ -607,10 +523,6 @@ def perform_triplet_training(data,
     else:
         lr_scheduler = CosineDecayScheduler(FLAGS.lr, FLAGS.lr_warmup_epochs, FLAGS.epochs)
     mm_scheduler = CosineDecayScheduler(1 - FLAGS.mm, 0, FLAGS.epochs)
-
-    margin_loss = TripletMarginWithDistanceLoss(margin=FLAGS.margin,
-                                                reduction='mean',
-                                                distance_function=cosine_distance)
 
     #####
     # Train & eval functions
@@ -645,19 +557,13 @@ def perform_triplet_training(data,
                                                                                              dim=-1).mean()
             to_log = dict()
         else:
-            if FLAGS.use_margin:
-                loss_1 = margin_loss(q1, y2, neg_y)
-                loss_2 = margin_loss(q2, y1, neg_y)
-                to_log = {'loss_1': loss_1, 'loss_2': loss_2}
-                loss = (loss_1 + loss_2) / 2
-            else:
-                sim1 = F.cosine_similarity(q1, y2.detach()).mean()
-                sim2 = F.cosine_similarity(q2, y1.detach()).mean()
-                neg_sim1 = F.cosine_similarity(q1, neg_y.detach()).mean()
-                neg_sim2 = F.cosine_similarity(q2, neg_y.detach()).mean()
-                to_log = {'sim1': sim1, 'sim2': sim2, 'neg_sim1': neg_sim1, 'neg_sim2': neg_sim2}
+            sim1 = F.cosine_similarity(q1, y2.detach()).mean()
+            sim2 = F.cosine_similarity(q2, y1.detach()).mean()
+            neg_sim1 = F.cosine_similarity(q1, neg_y.detach()).mean()
+            neg_sim2 = F.cosine_similarity(q2, neg_y.detach()).mean()
+            to_log = {'sim1': sim1, 'sim2': sim2, 'neg_sim1': neg_sim1, 'neg_sim2': neg_sim2}
 
-                loss = neg_lambda * (neg_sim1 + neg_sim2) - (1 - neg_lambda) * (sim1 + sim2)
+            loss = neg_lambda * (neg_sim1 + neg_sim2) - (1 - neg_lambda) * (sim1 + sim2)
 
         loss.backward()
 
@@ -716,6 +622,9 @@ def perform_bgrl_training(data,
                           num_eval_splits=None,
                           train_cb=None,
                           extra_return=False):
+    """Trains Bootstrapped Representation Learning on Graphs (BGRL).
+    """
+
     # prepare transforms
     transform_1 = compose_transforms(FLAGS.graph_transforms,
                                      drop_edge_p=FLAGS.drop_edge_p_1,
@@ -842,11 +751,6 @@ def perform_bgrl_training(data,
     torch.save({'model': model.online_encoder.state_dict()}, os.path.join(output_dir, f'bgrl-{FLAGS.dataset}.pt'))
     encoder = copy.deepcopy(model.online_encoder.eval())
 
-    # if FLAGS.batch_graphs:
-    #     # TODO(author): make sure we need to convert embeddings at this stage,
-    #     #  may be worth saving memory by keeping on CPU for very large graphs
-    #     representations = compute_batch_data_representations(encoder, data, device).to(device)
-    # else:
     representations = compute_data_representations_only(encoder, data, device, has_features=has_features)
     torch.save(representations, os.path.join(output_dir, f'bgrl-{FLAGS.dataset}-repr.pt'))
 
@@ -854,208 +758,3 @@ def perform_bgrl_training(data,
         return encoder, predictor
 
     return encoder, representations, time_bundle
-
-
-def perform_inductive_bgrl_training(train_dataset,
-                                    train_loader,
-                                    output_dir,
-                                    representation_size,
-                                    device,
-                                    g_zoo,
-                                    train_cb=None):
-    # prepare transforms
-    transform_1 = compose_transforms(FLAGS.graph_transforms,
-                                     drop_edge_p=FLAGS.drop_edge_p_1,
-                                     drop_feat_p=FLAGS.drop_feat_p_1)
-    transform_2 = compose_transforms(FLAGS.graph_transforms,
-                                     drop_edge_p=FLAGS.drop_edge_p_2,
-                                     drop_feat_p=FLAGS.drop_feat_p_2)
-    input_size = train_dataset.num_node_features
-
-    encoder = g_zoo.get_model(FLAGS.graph_encoder_model, input_size, True, 0, n_feats=input_size)
-    predictor = MLP_Predictor(representation_size, representation_size, hidden_size=FLAGS.predictor_hidden_size)
-    model = BGRL(encoder, predictor, has_features=True).to(device)
-
-    # optimizer
-    optimizer = AdamW(model.trainable_parameters(), lr=FLAGS.lr, weight_decay=FLAGS.weight_decay)
-
-    # scheduler
-    lr_scheduler = CosineDecayScheduler(FLAGS.lr, FLAGS.lr_warmup_epochs, FLAGS.epochs)
-    mm_scheduler = CosineDecayScheduler(1 - FLAGS.mm, 0, FLAGS.epochs)
-
-    #####
-    # Train & eval functions
-    #####
-    def full_train(data, step):
-        model.train()
-        data = data.to(device)
-
-        # update learning rate
-        lr = lr_scheduler.get(step)
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
-
-        # update momentum
-        mm = 1 - mm_scheduler.get(step)
-
-        # forward
-        optimizer.zero_grad()
-
-        x1, x2 = transform_1(data), transform_2(data)
-
-        q1, y2 = model(x1, x2)
-        q2, y1 = model(x2, x1)
-
-        loss = 2 - cosine_similarity(q1, y2.detach(), dim=-1).mean() - cosine_similarity(q2, y1.detach(), dim=-1).mean()
-        loss.backward()
-
-        # update online network
-        optimizer.step()
-        # update target network
-        model.update_target_network(mm)
-
-        # log scalars
-        wandb.log({'curr_lr': lr, 'curr_mm': mm, 'train_loss': loss, 'step': step, 'epoch': epoch}, step=step)
-
-        # log scalars
-
-    #####
-    ## End train & eval functions
-    #####
-
-    train_iter = iter(train_loader)
-    for epoch in tqdm(range(1, FLAGS.epochs + 1)):
-        if train_cb is not None:
-            train_cb(epoch - 1, model)
-
-        data = next(train_iter, None)
-        if data is None:
-            train_iter = iter(train_loader)
-            data = next(train_iter, None)
-        full_train(data, epoch)
-
-    # save encoder weights
-    torch.save({'model': model.online_encoder.state_dict()}, os.path.join(output_dir, f'bgrl-{FLAGS.dataset}.pt'))
-    encoder = copy.deepcopy(model.online_encoder.eval())
-
-    # if FLAGS.batch_graphs:
-    #     # TODO(author): make sure we need to convert embeddings at this stage,
-    #     #  may be worth saving memory by keeping on CPU for very large graphs
-    #     representations = compute_batch_data_representations(encoder, data, device).to(device)
-    # else:
-    representations = compute_representations_only(encoder, train_dataset, device, has_features=True)
-    torch.save(representations, os.path.join(output_dir, f'bgrl-{FLAGS.dataset}-repr.pt'))
-
-    return encoder, representations
-
-
-def perform_triplet_bgrl_training(train_dataset,
-                                  train_loader,
-                                  output_dir,
-                                  representation_size,
-                                  device,
-                                  g_zoo,
-                                  train_cb=None):
-    # prepare transforms
-    transform_1 = compose_transforms(FLAGS.graph_transforms,
-                                     drop_edge_p=FLAGS.drop_edge_p_1,
-                                     drop_feat_p=FLAGS.drop_feat_p_1)
-    transform_2 = compose_transforms(FLAGS.graph_transforms,
-                                     drop_edge_p=FLAGS.drop_edge_p_2,
-                                     drop_feat_p=FLAGS.drop_feat_p_2)
-    transform_3 = compose_transforms(FLAGS.negative_transforms, drop_edge_p=0.98, drop_feat_p=0.98)
-    input_size = train_dataset.num_node_features
-
-    encoder = g_zoo.get_model(FLAGS.graph_encoder_model, input_size, True, 0, n_feats=input_size)
-    predictor = MLP_Predictor(representation_size, representation_size, hidden_size=FLAGS.predictor_hidden_size)
-    model = TripletBGRL(encoder, predictor, has_features=True).to(device)
-
-    # optimizer
-    optimizer = AdamW(model.trainable_parameters(), lr=FLAGS.lr, weight_decay=FLAGS.weight_decay)
-
-    # scheduler
-    lr_scheduler = CosineDecayScheduler(FLAGS.lr, FLAGS.lr_warmup_epochs, FLAGS.epochs)
-    mm_scheduler = CosineDecayScheduler(1 - FLAGS.mm, 0, FLAGS.epochs)
-
-    #####
-    # Train & eval functions
-    #####
-    def full_train(data, step):
-        model.train()
-        data = data.to(device)
-
-        # update learning rate
-        lr = lr_scheduler.get(step)
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
-
-        # update momentum
-        mm = 1 - mm_scheduler.get(step)
-
-        # forward
-        optimizer.zero_grad()
-
-        x1, x2, x3 = transform_1(data), transform_2(data), transform_3(data)
-
-        q1, y2 = model(x1, x2)
-        q2, y1 = model(x2, x1)
-        neg_y = model.forward_target(x3)
-
-        sim1 = F.cosine_similarity(q1, y2.detach()).mean()
-        sim2 = F.cosine_similarity(q2, y1.detach()).mean()
-        neg_sim1 = F.cosine_similarity(q1, neg_y.detach()).mean()
-        neg_sim2 = F.cosine_similarity(q2, neg_y.detach()).mean()
-
-        loss = neg_sim1 + neg_sim2 - sim1 - sim2
-        loss.backward()
-
-        # update online network
-        optimizer.step()
-        # update target network
-        model.update_target_network(mm)
-
-        # log scalars
-        wandb.log(
-            {
-                'curr_lr': lr,
-                'curr_mm': mm,
-                'train_loss': loss,
-                'step': step,
-                'epoch': epoch,
-                'sim1': sim1,
-                'sim2': sim2,
-                'neg_sim1': neg_sim1,
-                'neg_sim2': neg_sim2
-            },
-            step=step)
-
-        # log scalars
-
-    #####
-    ## End train & eval functions
-    #####
-
-    train_iter = iter(train_loader)
-    for epoch in tqdm(range(1, FLAGS.epochs + 1)):
-        if train_cb is not None:
-            train_cb(epoch - 1, model)
-
-        data = next(train_iter, None)
-        if data is None:
-            train_iter = iter(train_loader)
-            data = next(train_iter, None)
-        full_train(data, epoch)
-
-    # save encoder weights
-    torch.save({'model': model.online_encoder.state_dict()}, os.path.join(output_dir, f'bgrl-{FLAGS.dataset}.pt'))
-    encoder = copy.deepcopy(model.online_encoder.eval())
-
-    # if FLAGS.batch_graphs:
-    #     # TODO(author): make sure we need to convert embeddings at this stage,
-    #     #  may be worth saving memory by keeping on CPU for very large graphs
-    #     representations = compute_batch_data_representations(encoder, data, device).to(device)
-    # else:
-    representations = compute_representations_only(encoder, train_dataset, device, has_features=True)
-    torch.save(representations, os.path.join(output_dir, f'bgrl-{FLAGS.dataset}-repr.pt'))
-
-    return encoder, representations

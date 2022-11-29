@@ -86,10 +86,6 @@ flags.DEFINE_float('add_edge_ratio_1', 0.,
 flags.DEFINE_float('add_edge_ratio_2', 0.,
                    'Ratio of negative edges to sample (compared to existing positive edges) for target net.')
 flags.DEFINE_float('neg_lambda', 0.5, 'Weight to use for the negative triplet head. Between 0 and 1')
-flags.DEFINE_bool('use_margin', False, 'Whether or not to use a margin loss for the network.')
-flags.DEFINE_float('margin', 0.1, 'Margin to use for the margin-based loss.')
-flags.DEFINE_bool('hybrid_loss', False, 'Whether or not to use a hybrid BGRL -> margin loss')
-flags.DEFINE_float('hybrid_transition_epoch', 1000, 'Epoch to transition to margin loss')
 flags.DEFINE_float('big_split_ratio', 0.2, 'Split ratio to use for larger datasets')
 
 # Logging and checkpoint.
@@ -291,18 +287,6 @@ def main(_):
                                                                          input_size, has_features, g_zoo)
             # del encoder
             log.info('Finished training')
-        elif FLAGS.base_model == 'simsiam':
-            time_bundle = None
-            encoder, representations = perform_simsiam_training(data=training_data,
-                                                                output_dir=OUTPUT_DIR,
-                                                                representation_size=representation_size,
-                                                                device=device,
-                                                                input_size=input_size,
-                                                                has_features=has_features,
-                                                                g_zoo=g_zoo,
-                                                                train_cb=train_cb)
-            # del encoder  # don't need rn
-            log.info('Finished training!')
         elif FLAGS.base_model == 'triplet':
             encoder, representations, time_bundle = perform_triplet_training(data=training_data.to(device),
                                                                              output_dir=OUTPUT_DIR,
