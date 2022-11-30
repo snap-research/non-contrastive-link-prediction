@@ -1,3 +1,6 @@
+"""This file trains a GCN encoder using max-margin-loss and evaluates it
+on link prediction tasks.
+"""
 import json
 import logging
 import time
@@ -110,11 +113,11 @@ def main(_):
     time_bundle = None
 
     for run_num in range(FLAGS.num_runs):
-        print('=' * 30)
-        print('=' * 30)
-        print('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
-        print('=' * 30)
-        print('=' * 30)
+        log.info('=' * 30)
+        log.info('=' * 30)
+        log.info('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
+        log.info('=' * 30)
+        log.info('=' * 30)
 
         if FLAGS.split_method == 'transductive':
             encoder, representations, time_bundle = perform_transductive_margin_training(

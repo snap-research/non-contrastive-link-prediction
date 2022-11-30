@@ -71,25 +71,20 @@ def perform_bgrl_training(data,
         # update momentum
         mm = 1 - mm_scheduler.get(step)
 
-        # forward
         optimizer.zero_grad()
-
         if not has_features:
             data.x = encoder.get_node_feats().weight.data.clone().detach()
-        x1, x2 = transform_1(data), transform_2(data)
 
+        x1, x2 = transform_1(data), transform_2(data)
         q1, y2 = model(x1, x2)
         q2, y1 = model(x2, x1)
 
         loss = 2 - cosine_similarity(q1, y2.detach(), dim=-1).mean() - cosine_similarity(q2, y1.detach(), dim=-1).mean()
         loss.backward()
 
-        # update online network
         optimizer.step()
-        # update target network
         model.update_target_network(mm)
 
-        # log scalars
         wandb.log({'curr_lr': lr, 'curr_mm': mm, 'train_loss': loss, 'step': step, 'epoch': epoch}, step=step)
 
     def batch_train(loader, epoch):
@@ -103,10 +98,8 @@ def perform_bgrl_training(data,
         # update momentum
         mm = 1 - mm_scheduler.get(epoch)
 
-        # TODO(author): add support for keeping feature matrix on CPU if graph is too large
         for batch in tqdm(iterable=loader, desc='Batches', leave=False):
             batch = batch.to(device)
-            # adjs = [adj.to(device) for adj in adjs]
             optimizer.zero_grad()
 
             if not has_features:

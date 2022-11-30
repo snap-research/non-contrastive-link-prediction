@@ -4,6 +4,8 @@ This respository contains the official implementation of T-BGRL, as well as re-i
 
 While we do report and log ROC-AUC results, they should not be used as the primary evaluation metric since we perform early stopping (for the decoder) on validation `Hits@50`, rather than ROC-AUC. We also choose to optimize our parameters for `Hits@50` instead of ROC-AUC. We explain the rationale behind choosing `Hits@50` in our paper.
 
+For more information, please check out our paper at https://arxiv.org/abs/2211.14394, and please cite our paper (details below) if you end up using the code in this repository.
+
 ![TBGRL Diagram](docs/TBGRL_Diagram.png)
 
 ## Setup
@@ -16,7 +18,7 @@ Most of the code should be able to run using only CPUs, but some models may requ
 
 ## Model Settings
 
-As described in the paper, we evaluate our models in both the transductive and inductive settings. For the transductive setting, we use a 85%/5%/10% training/validation/test data split. For the inductive setting, we use a 10%/30% (large dataset/small dataset) split at each stage (as described in the paper). The inductive splitting code can be found in the [`perform_inductive_margin_training`](src/lib/utils.py) function.
+As described in the paper, we evaluate our models in both the transductive and inductive settings. For the transductive setting, we use a 85%/5%/10% training/validation/test data split. For the inductive setting, we use a 10%/30% (large dataset/small dataset) split at each stage (as described in the paper). The inductive splitting code can be found in the [`do_node_inductive_edge_split`](src/lib/utils.py) function.
 
 ## Reproducing Results
 
@@ -57,11 +59,11 @@ where `[dataset_name]` is one of the following datasets:
 - `citeseer`
 - `cora`
 
-The results are stored, by default, in `src/runs/[dataset_name]/[model_run_name]`. Within that directory, `config.cfg` contains the configuration used to run the model, and `results.json` stores the results across the 5 runs.
+The results are stored, by default, in `src/runs/[dataset_name]/[model_run_name]`, where `model_run_name` is generated using the runtime flags. Within that directory, `config.cfg` contains the configuration used to run the model, and `results.json` stores the results across the 5 runs.
 
 ### BGRL, GBT, and CCA-SSG
 
-The BGRL, GBT, and CCA-SSG implementations all use the same files ([`src/train_nc.py`](src/train_nc.py) & [`src/train_nc_inductive.py`](src/train_nc_inductive.py)) with a different value for the `base_model` parameter:
+The BGRL, GBT, and CCA-SSG implementations all use the same file ([`src/train_nc.py`](src/train_nc.py)) with a different value for the `base_model` parameter:
 
 - `bgrl`: BGRL implementation
 - `gbt`: GBT implementation
@@ -71,15 +73,21 @@ We perform hyperparameter optimization for all of these baseline models accordin
 
 ### GRACE
 
-The GRACE implementation is primarily from the [reference GRACE implementation](https://github.com/CRIPAC-DIG/GRACE). We run hyperparameter optimization according to the settings described above (with the addition of GRACE-specific parameters). We modified the code to use the same encoder as the other models and to use a link prediction decoder. We also modified them for the transductive/inductive settings. The run files can be found in [`src/train_grace.py`](src/train_grace.py) and [`src/train_grace_inductive.py`](src/train_grace_inductive.py).
+The GRACE implementation is primarily from the [reference GRACE implementation](https://github.com/CRIPAC-DIG/GRACE). We run hyperparameter optimization according to the settings described above (with the addition of GRACE-specific parameters). We modified the code to use the same encoder size as the other models and to use a link prediction decoder. We also modified them for the transductive/inductive settings. The script can be found in [`src/train_grace.py`](src/train_grace.py).
 
 ### E2E-GCN
 
-The end-to-end GCN implementation can be found in [`src/train_e2e.py`](src/train_e2e.py) (transductive) and [`src/train_e2e_inductive.py`](src/train_e2e_inductive.py) (inductive). This uses the same encoder as the methods above, but backpropogation is performed all the way through from the decoder. We run hyperparameter optimization according to the settings described above (with the addition of E2E-GCN-specific parameters).
+The end-to-end GCN implementation can be found in [`src/train_e2e.py`](src/train_e2e.py). This uses the same encoder as the methods above, but backpropogation is performed all the way through from the decoder. We run hyperparameter optimization according to the settings described above (with the addition of E2E-GCN-specific parameters).
 
 ### ML-GCN
 
-We provide transductive and inductive max-margin-loss GCN implementation in the [`src/train_margin.py`](src/train_margin.py) and [`src/train_margin_inductive.py`](src/train_margin_inductive.py) files, respectively. For each anchor node, we use rejection sampling and try up to 3 times to obtain true negatives, but fall back to random nodes after 3 failed attempts. We run hyperparameter optimization as described above (with the addition of ML-GCN-specific parameters).
+We provide transductive and inductive max-margin-loss GCN implementation in the [`src/train_margin.py`](src/train_margin.py) file. For each anchor node, we use rejection sampling and try up to 3 times to obtain true negatives, but fall back to random nodes after 3 failed attempts (following the default behavior of the [`negative_sampling`](https://pytorch-geometric.readthedocs.io/en/latest/_modules/torch_geometric/utils/negative_sampling.html) function in PyG). We run hyperparameter optimization as described above (with the addition of ML-GCN-specific parameters).
+
+### Additional Run Information
+
+You can manually choose between running each model on the transductive and inductive splits with the `--split_method` flag. Specifically, `--split_method=transductive` will use the transductive split, and `--split_method=inductive` will use the inductive split.
+
+For more information on what flags are available for a script, you can use the `--helpfull` flag. For example, `python src/train_nc.py --helpfull` will print out all accepted flags, as well as a short description of what each one does.
 
 ## Credit
 
@@ -87,4 +95,11 @@ We used significant portions of the code from the [reference BGRL implementation
 
 If you use this code, please cite:
 
-(currently under review)
+```
+@article{shiao2022link,
+  title={Link Prediction with Non-Contrastive Learning},
+  author={Shiao, William and Guo, Zhichun and Zhao, Tong and Papalexakis, Evangelos E. and Liu, Yozen and Shah, Neil},
+  journal={arXiv preprint arXiv:2211.14394},
+  year={2022}
+}
+```

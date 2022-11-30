@@ -118,7 +118,7 @@ def perform_triplet_training(data,
             best_loss = train_loss
             last_update_epoch = epoch
         elif FLAGS.training_early_stop and epoch - last_update_epoch > FLAGS.training_early_stop_patience:
-            print('Early stopping performed!')
+            log.info('Early stopping performed!')
             break
     time_bundle = get_time_bundle(times)
 

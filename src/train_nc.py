@@ -1,3 +1,8 @@
+"""This file trains several non-contrastive methods.
+This includes T-BGRL (our proposed method), BGRL, CCA-SSG, and GBT.
+The model can be selected with the base_model flag
+(e.g. --base_model=triplet for T-BGRL).
+"""
 import logging
 import os
 from os import path
@@ -29,7 +34,8 @@ FLAGS = flags.FLAGS
 FlagHelper.define_flags('NCL')
 # Dataset.
 flags.DEFINE_enum('base_model', 'bgrl', ['gbt', 'bgrl', 'triplet', 'cca'], 'Which base model to use.')
-flags.DEFINE_enum('scheduler', 'cosine', ['cyclic', 'cosine'], 'Which lr scheduler to use')
+flags.DEFINE_float('mm', 0.99, 'The momentum for moving average.')
+flags.DEFINE_integer('predictor_hidden_size', 512, 'Hidden size of projector.')
 
 flags.DEFINE_enum('negative_transforms', 'randomize-feats', list(VALID_NEG_TRANSFORMS.keys()),
                   'Which negative graph transforms to use (triplet formulation only).')
@@ -43,29 +49,20 @@ flags.DEFINE_integer('graph_batch_size', 1024, 'Number of subgraphs to use per m
 flags.DEFINE_integer('graph_eval_batch_size', 128, 'Number of subgraphs to use per minibatch')
 flags.DEFINE_integer('n_workers', 0, 'Number of workers to use')
 
-# Architecture.
-flags.DEFINE_integer('predictor_hidden_size', 512, 'Hidden size of projector.')
-
-# Training hyperparameters.
-flags.DEFINE_float('mm', 0.99, 'The momentum for moving average.')
 flags.DEFINE_integer('lr_warmup_epochs', 1000, 'Warmup period for learning rate.')
 flags.DEFINE_bool('training_early_stop', False, 'Whether or not to perform early stopping on the training loss')
 flags.DEFINE_integer('training_early_stop_patience', 50, 'Training early stopping patience')
 
-# Augmentations.
+# Corruption flags
 flags.DEFINE_float('add_edge_ratio_1', 0.,
                    'Ratio of negative edges to sample (compared to existing positive edges) for online net.')
 flags.DEFINE_float('add_edge_ratio_2', 0.,
                    'Ratio of negative edges to sample (compared to existing positive edges) for target net.')
 flags.DEFINE_float('neg_lambda', 0.5, 'Weight to use for the negative triplet head. Between 0 and 1')
 
-# Evaluation
-flags.DEFINE_integer('eval_epochs', 5, 'Evaluate every eval_epochs.')
-
 # Link prediction model-specific flags
 flags.DEFINE_bool('save_extra', False, 'Whether or not to save extra plotting/debugging info')
 flags.DEFINE_bool('dataset_fixed', True, 'Whether or not a message-passing vs normal edges bug was fixed')
-flags.DEFINE_bool('adjust_layer_sizes', False, 'Whether or not to adjust MLP layer sizes for fair comparisons')
 
 flags.DEFINE_float('cca_lambda', 0., 'Lambda for CCA-SSG')
 
@@ -183,11 +180,11 @@ def main(_):
     time_bundle = None
 
     for run_num in range(FLAGS.num_runs):
-        print('=' * 30)
-        print('=' * 30)
-        print('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
-        print('=' * 30)
-        print('=' * 30)
+        log.info('=' * 30)
+        log.info('=' * 30)
+        log.info('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
+        log.info('=' * 30)
+        log.info('=' * 30)
 
         if FLAGS.base_model == 'bgrl':
             encoder, representations, time_bundle = perform_bgrl_training(data=training_data,

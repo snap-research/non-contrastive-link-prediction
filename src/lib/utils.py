@@ -56,6 +56,28 @@ def do_node_inductive_edge_split(dataset: Dataset,
                                  split_seed=234,
                                  big_split_ratio_override=None,
                                  return_split=False):
+    """Perform an inductive split on the dataset, as described in our paper.
+    We perform the following steps:
+        1) Withhold a portion of the edges (and same number of disconnected node pairs)
+            to use as testing-only edges.
+        2) Partition the graph into "observed" and "unobserved" nodes.
+        3) Mask out some edges as testing-only edges
+        4) Mask out some edges as inference-only edges
+        5) Mask out some edges as validation-only edges
+        6) Mask out some edge as training-only edges.
+
+    This function returns a tuple with the following items:
+        - training_data: training-only data (only observed nodes)
+        - val_data: validation-only data (only observed nodes)
+        - inference_data: inference-only data (all nodes)
+        - data: original data (all nodes)
+        - test_edge_bundle: bundle of O-O, O-U, and U-U links where
+            O means observed and U means unobserved.
+        - negative_samples: negative samples to be used to calculate Hits@K
+
+    A more detailed description of the rationale and process can be found
+    in Appendix A.4 of our paper. See https://arxiv.org/pdf/2211.14394.pdf
+    """
     # Use a larger ratio for smaller datasets to ensure we have enough testing data.
     if small_dataset:
         test_ratio = 0.30
@@ -129,20 +151,24 @@ def do_node_inductive_edge_split(dataset: Dataset,
     inference_edge_index = torch.cat([old_old_train, old_old_val, old_new_train, new_new_train], dim=-1)
     inference_data = Data(new_data.x, inference_edge_index)
 
-    print("===== Dataset Information =====")
-    print("#Old Nodes:\t" + str(training_only_x.size(0)))
-    print("#New Nodes:\t" + str(new_data.x.size(0) - training_only_x.size(0)))
-    print("#Old-Old testing edges:\t" + str(old_old_test.size(1)))
-    print("#Old-New testing edges:\t" + str(old_new_test.size(1)))
-    print("#New-New testing edges:\t" + str(new_new_test.size(1)))
+    log.debug("===== Dataset Information =====")
+    log.debug("#Old Nodes:\t" + str(training_only_x.size(0)))
+    log.debug("#New Nodes:\t" + str(new_data.x.size(0) - training_only_x.size(0)))
+    log.debug("#Old-Old testing edges:\t" + str(old_old_test.size(1)))
+    log.debug("#Old-New testing edges:\t" + str(old_new_test.size(1)))
+    log.debug("#New-New testing edges:\t" + str(new_new_test.size(1)))
 
     if return_split:
         return training_data, val_data, inference_data, data, test_edge_bundle, negative_samples, new_data
     return training_data, val_data, inference_data, data, test_edge_bundle, negative_samples
 
 
-# From the OGB implementation of SEAL
 def do_transductive_edge_split(dataset, fast_split=False, val_ratio=0.05, test_ratio=0.1, split_seed=234):
+    """Splits a PyG dataset into train/test/valid sets.
+    Returns a dictionary in a similar format to OGB's `get_edge_split` function.
+    From:
+    https://github.com/facebookresearch/SEAL_OGB/blob/ea426e1736009bc7f63de1c260ce3731754d21aa/utils.py#L190
+    """
     data = dataset[0]
     random.seed(split_seed)
     torch.manual_seed(split_seed)
@@ -205,6 +231,7 @@ def is_small_dset(dset):
 
 
 def merge_multirun_results(all_results):
+    """Merges results from multiple runs into a single dictionary."""
     runs = zip(*all_results)
     agg_results = []
     val_mean = test_mean = None
@@ -229,7 +256,7 @@ def merge_multirun_results(all_results):
     return agg_results, {**keywise_prepend(val_mean, 'val_mean_'), **keywise_prepend(test_mean, 'test_mean_')}
 
 def compute_representations_only(net, dataset, device, has_features=True, feature_type='degree'):
-    r"""Pre-computes the representations for the entire dataset.
+    """Pre-computes the representations for the entire dataset.
     Does not include node labels.
 
     Returns:
@@ -243,7 +270,7 @@ def compute_representations_only(net, dataset, device, has_features=True, featur
         data = data.to(device)
         if not has_features:
             if data.x is not None:
-                print('[WARNING] features overidden in adj matrix')
+                log.warn('[WARNING] features overidden in adj matrix')
             data.x = net.get_node_feats().weight.data
         elif data.x is None:
             data = add_node_feats(data, device=device, type=feature_type)
@@ -269,7 +296,7 @@ def compute_data_representations_only(net, data, device, has_features=True):
 
     if not has_features:
         if data.x is not None:
-            print('[WARNING] features overidden in adj matrix')
+            log.warn('[WARNING] features overidden in adj matrix')
         data.x = net.get_node_feats().weight.data
 
     with torch.no_grad():

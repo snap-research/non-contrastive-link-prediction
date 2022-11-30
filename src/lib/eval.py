@@ -28,7 +28,7 @@ def eval_hits(y_pred_pos, y_pred_neg, K):
     '''
 
     if len(y_pred_neg) < K:
-        print(f'[WARNING]: hits@{K} defaulted to 1')
+        log.warn(f'[WARNING]: hits@{K} defaulted to 1')
         return {'hits@{}'.format(K): 1.}
 
     kth_score_in_negative_edges = torch.topk(y_pred_neg, K)[0][-1]

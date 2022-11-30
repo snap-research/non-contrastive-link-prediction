@@ -1,3 +1,7 @@
+"""This file trains the GRACE model and evaluates it for link prediction.
+This file contains pieces of code from the official GRACE implementation
+at https://github.com/CRIPAC-DIG/GRACE
+"""
 import json
 import os
 import time
@@ -5,6 +9,7 @@ import wandb
 
 from absl import app
 from absl import flags
+import logging
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
@@ -15,8 +20,7 @@ from lib.data import get_dataset
 from ogb.linkproppred import PygLinkPropPredDataset
 
 from lib.eval import do_all_eval, do_inductive_eval
-from models.decoders import LinkPredictorZoo
-from lib.models import GraceEncoder, GraceModel
+from lib.models import GraceEncoder, GraceModel, LinkPredictorZoo
 from lib.training import get_time_bundle
 import lib.flags as FlagHelper
 
@@ -25,6 +29,8 @@ from lib.utils import do_transductive_edge_split, is_small_dset, do_node_inducti
 ######
 # Flags
 ######
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 FLAGS = flags.FLAGS
 
 # Shared flags
@@ -122,11 +128,11 @@ def main(_):
     total_times = []
 
     for run_num in range(FLAGS.num_runs):
-        print('=' * 30)
-        print('=' * 30)
-        print('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
-        print('=' * 30)
-        print('=' * 30)
+        log.info('=' * 30)
+        log.info('=' * 30)
+        log.info('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
+        log.info('=' * 30)
+        log.info('=' * 30)
 
         # TODO(author): change to use EncoderZoo?
         lp_zoo = LinkPredictorZoo(FLAGS)
@@ -164,7 +170,7 @@ def main(_):
             times.append(elapsed)
 
             if epoch % 25 == 0:
-                print(f'(T) | Epoch={epoch:03d}, loss={loss:.4f}')
+                log.debug(f'(T) | Epoch={epoch:03d}, loss={loss:.4f}')
 
         time_bundle = get_time_bundle(times)
         (total_time, std_time, mean_time, times) = time_bundle
@@ -175,7 +181,7 @@ def main(_):
         with open(f'{OUTPUT_DIR}/times.json', 'w') as f:
             json.dump({'all_times': all_times, 'total_times': total_times}, f)
 
-        print("=== Final Evaluation ===")
+        log.info("=== Final Evaluation ===")
         if FLAGS.split_method == 'inductive':
             results = do_inductive_eval(model_name=model_name,
                                         output_dir=OUTPUT_DIR,
@@ -208,9 +214,9 @@ def main(_):
     with open(f'{OUTPUT_DIR}/agg_results.json', 'w') as f:
         json.dump(agg_results, f)
 
-    print(f'Done! Run information can be found at {OUTPUT_DIR}')
+    log.info(f'Done! Run information can be found at {OUTPUT_DIR}')
 
 
 if __name__ == "__main__":
-    print('PyTorch version: %s' % torch.__version__)
+    log.debug('PyTorch version: %s' % torch.__version__)
     app.run(main)

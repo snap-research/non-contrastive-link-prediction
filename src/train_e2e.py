@@ -1,3 +1,4 @@
+"""This file trains a end-to-end baseline GCN model and evaluates it for link prediction."""
 import logging
 import os
 import json
@@ -25,7 +26,6 @@ FLAGS = flags.FLAGS
 
 # Define shared flags
 FlagHelper.define_flags('E2E-GCN')
-# flags.DEFINE_float('mm', 0.99, 'The momentum for moving average.')
 flags.DEFINE_integer('lr_warmup_epochs', 1000, 'Warmup period for learning rate.')
 
 
@@ -87,11 +87,11 @@ def main(_):
 
     all_results = []
     for run_num in range(FLAGS.num_runs):
-        print('=' * 30)
-        print('=' * 30)
-        print('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
-        print('=' * 30)
-        print('=' * 30)
+        log.info('=' * 30)
+        log.info('=' * 30)
+        log.info('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
+        log.info('=' * 30)
+        log.info('=' * 30)
 
         if FLAGS.split_method == 'transductive':
             _, _, results = perform_e2e_transductive_training(model_name=get_full_model_name(),

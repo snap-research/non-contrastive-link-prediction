@@ -197,7 +197,6 @@ def compose_transforms(transform_name, drop_edge_p, drop_feat_p, create_copy=Tru
     }
 
     transforms = []
-    # copy graph
     if create_copy:
         transforms.append(copy.deepcopy)
 

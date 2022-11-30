@@ -109,8 +109,8 @@ def perform_e2e_transductive_training(model_name, data, edge_split, output_dir, 
         test_res = eval_model(model, predictor, data, device, test_edge, test_edge_neg)
 
         if epoch % 10 == 0:
-            print('Validation:', val_res)
-            print('Test:', test_res)
+            log.info('Validation:', val_res)
+            log.info('Test:', test_res)
         metric_names = list(test_res.keys())
 
         assert metric_names is not None
@@ -141,9 +141,9 @@ def perform_e2e_transductive_training(model_name, data, edge_split, output_dir, 
         if last_epoch is not None and epoch - last_epoch > 50:
             break
 
-    print('Best results: ', best_results)
+    log.debug('Best results: ', best_results)
     torch.save((model, predictor), os.path.join(output_dir, 'model.pt'))
-    print('Saved model weights')
+    log.debug('Saved model weights')
 
     all_results = [{
         'target_metric': target_metric,
@@ -194,11 +194,11 @@ def perform_e2e_inductive_training(model_name, training_data, val_data, inferenc
         metric_names = list(test_res.keys())
 
         if epoch % 5 == 0:
-            print('Validation:', val_res)
-            print('Test:', test_res)
-            print('New-New:', new_new_res)
-            print('Old-New:', old_new_res)
-            print('Old-Old:', old_old_res)
+            log.info('Validation:', val_res)
+            log.info('Test:', test_res)
+            log.info('New-New:', new_new_res)
+            log.info('Old-New:', old_new_res)
+            log.info('Old-Old:', old_old_res)
 
         # Store best results based on validation hits@50
         if best_val is None or val_res[target_metric] > best_val[target_metric]:
@@ -235,9 +235,9 @@ def perform_e2e_inductive_training(model_name, training_data, val_data, inferenc
                 step=wandb.run.step)
         wandb.log({'train_loss': train_loss}, step=wandb.run.step)
 
-    print('Best results: ', best_results)
+    log.debug('Best results: ', best_results)
     torch.save((model, predictor), path.join(output_dir, 'model.pt'))
-    print('Saved model weights')
+    log.debug('Saved model weights')
 
     results = {
         'target_metric': target_metric,
