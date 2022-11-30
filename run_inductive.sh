@@ -14,4 +14,4 @@ if [[ ! " ${datasets[*]} " == *"$1"* ]]; then
 fi
 
 cd src || exit 3
-python train_nc_inductive.py --flagfile="config/inductive_$1.cfg"
+python train_nc.py --flagfile="config/inductive_$1.cfg" --split_method=inductive

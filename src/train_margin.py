@@ -1,14 +1,11 @@
 import json
 import logging
-import os
-from os import path
 import time
 
 from absl import app
 from absl import flags
 import torch
 from torch import nn
-from torch.utils.tensorboard import SummaryWriter
 import wandb
 import torch.nn.functional as F
 
@@ -19,7 +16,7 @@ from lib.eval import do_all_eval, do_inductive_eval
 from ogb.linkproppred import PygLinkPropPredDataset
 
 import lib.flags as FlagHelper
-from lib.utils import do_node_inductive_edge_split, do_transductive_edge_split, is_small_dset, merge_multirun_results, set_random_seeds
+from lib.utils import do_node_inductive_edge_split, do_transductive_edge_split, is_small_dset, merge_multirun_results
 
 ######
 # Flags

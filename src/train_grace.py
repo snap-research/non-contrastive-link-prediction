@@ -10,14 +10,13 @@ import torch.nn.functional as F
 import torch.nn as nn
 from torch_geometric.utils import dropout_adj
 from torch_geometric.nn import GCNConv
-from lib.utils import compute_data_representations_only, compute_representations_only
+from lib.utils import compute_representations_only
 from lib.data import get_dataset
 from ogb.linkproppred import PygLinkPropPredDataset
 
 from lib.eval import do_all_eval, do_inductive_eval
 from models.decoders import LinkPredictorZoo
-from torch.utils.tensorboard import SummaryWriter
-from lib.models import GraceEncoder, GraceModel  # type: ignore
+from lib.models import GraceEncoder, GraceModel
 from lib.training import get_time_bundle
 import lib.flags as FlagHelper
 

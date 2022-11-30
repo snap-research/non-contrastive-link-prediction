@@ -28,17 +28,6 @@ def add_node_feats(data, device, type='degree'):
     data.x = one_hot(degrees).to(device).float()
     return data
 
-
-def set_random_seeds(random_seed=0):
-    r"""Sets the seed for generating random numbers."""
-    torch.manual_seed(random_seed)
-    torch.cuda.manual_seed(random_seed)
-    torch.backends.cudnn.deterministic = True  # type: ignore
-    torch.backends.cudnn.benchmark = False  # type: ignore
-    np.random.seed(random_seed)
-    random.seed(random_seed)
-
-
 def create_mask(base_mask, rows, cols):
     return base_mask[rows] & base_mask[cols]
 

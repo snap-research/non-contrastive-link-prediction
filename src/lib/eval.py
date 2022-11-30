@@ -36,26 +36,6 @@ def eval_hits(y_pred_pos, y_pred_neg, K):
     return {'hits@{}'.format(K): hitsK}
 
 
-def eval_mrr(y_pred_pos, y_pred_neg, single_val=True):
-    '''
-        compute mrr
-        y_pred_neg is an array with shape (batch size, num_entities_neg).
-        y_pred_pos is an array with shape (batch size, )
-        From:
-        https://github.com/snap-stanford/ogb/blob/1c875697fdb20ab452b2c11cf8bfa2c0e88b5ad3/ogb/linkproppred/evaluate.py#L237
-    '''
-    y_pred = torch.cat([y_pred_pos.view(-1, 1), y_pred_neg], dim=1)
-    argsort = torch.argsort(y_pred, dim=1, descending=True)
-    ranking_list = torch.nonzero(argsort == 0, as_tuple=False)
-    ranking_list = ranking_list[:, 1] + 1
-    mrr_list = 1. / ranking_list.to(torch.float)
-
-    if single_val:
-        return torch.mean(mrr_list)
-
-    return {'mrr_list': mrr_list}
-
-
 def eval_roc(y_pred_pos, y_pred_neg):
     """Computes the ROC-AUC.
     From: https://github.com/snap-stanford/ogb/blob/1c875697fdb20ab452b2c11cf8bfa2c0e88b5ad3/ogb/linkproppred/evaluate.py#L280

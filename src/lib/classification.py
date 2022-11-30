@@ -7,8 +7,9 @@ from sklearn.preprocessing import OneHotEncoder, normalize
 
 
 def fit_logistic_regression(X, y, data_random_seed=1, repeat=1):
-    """Fit a logistic regression model to the data.
-    This is from the official BGRL implementation.
+    """Fit a logistic regression model to the data for node classification.
+    This is from the official BGRL implementation:
+    https://github.com/nerdslab/bgrl/blob/dec99f8c605e3c4ae2ece57f3fa1d41f350d11a9/bgrl/logistic_regression_eval.py#L9
     """
     # transform targets to one-hot vector
     one_hot_encoder = OneHotEncoder(categories='auto', sparse=False)
@@ -18,9 +19,8 @@ def fit_logistic_regression(X, y, data_random_seed=1, repeat=1):
     # normalize x
     X = normalize(X, norm='l2')
 
-    # set random state
-    rng = np.random.RandomState(data_random_seed)  # this will ensure the dataset will be split exactly the same
-    # throughout training
+    # set random state to ensure a consistent split
+    rng = np.random.RandomState(data_random_seed)
 
     accuracies = []
     for _ in range(repeat):
