@@ -1,26 +1,16 @@
-# Hits@K code is adapted from OGB implementation at
-# https://github.com/snap-stanford/ogb/blob/d30da3e3d65883f17290757522b372c34b81ce8d/ogb/linkproppred/evaluate.py#L201
-
 import torch
-import copy
 import json
 from os import path
 from absl import flags
-import time
-import numpy as np
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
-from sklearn.preprocessing import RobustScaler
 from torch import nn
-import torch.nn.functional as F
 from torch_geometric.utils import negative_sampling
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 import logging
 
-from lib.bgrl import compute_representations_only
-
 from .classification import do_classification_eval
+from .utils import compute_representations_only
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
@@ -98,7 +88,7 @@ def eval_all(y_pred_pos, y_pred_neg):
     }
 
 
-def do_production_eval(model_name,
+def do_inductive_eval(model_name,
                        output_dir,
                        encoder,
                        valid_models,
@@ -112,6 +102,9 @@ def do_production_eval(model_name,
                        wb=None,
                        output_fn='results.json',
                        return_extra=False):
+    """Trains a link prediction model on the provided embeddings in the inductive setting.
+    Returns the trained link predictor and various evaluation metrics.
+    """
     all_results = []
 
     train_embeddings = torch.nn.Embedding.from_pretrained(compute_representations_only(encoder, [train_data], device),
@@ -121,8 +114,6 @@ def do_production_eval(model_name,
                                                               freeze=True)
 
     log.info('Beginning evaluation...')
-    if any(x in FLAGS.link_pred_model for x in ('cosine', 'lr', 'prod_lr')):
-        raise NotImplementedError()
 
     if FLAGS.do_classification_eval:
         raise NotImplementedError()
@@ -130,10 +121,9 @@ def do_production_eval(model_name,
     nn_model = None
     for i in range(len(valid_models)):
         log.info('Performing NN-based eval')
-        nn_model, results = perform_production_nn_link_eval(lp_zoo=lp_zoo,
+        nn_model, results = perform_inductive_nn_link_eval(lp_zoo=lp_zoo,
                                                             train_data=train_data,
                                                             val_data=val_data,
-                                                            inference_data=inference_data,
                                                             train_embeddings=train_embeddings,
                                                             inference_embeddings=inference_embeddings,
                                                             device=device,
@@ -186,25 +176,13 @@ def do_all_eval(model_name,
                 wb,
                 patience=50,
                 output_fn='results.json'):
+    """Train a link prediction model in the transductive setting.
+    If `FLAGS.do_classification_eval` is true, it will also perform node classification.
+    """
     all_results = []
     classification_results = []
 
     log.info('Beginning evaluation...')
-
-    if 'cosine' in FLAGS.link_pred_model:
-        log.info('Performing cosine-based eval')
-        results = perform_cosine_eval(edge_split, embeddings)
-        all_results.append(results)
-
-    if 'lr' in FLAGS.link_pred_model:
-        log.info('Performing LR-based eval')
-        _, results = perform_lr_eval(dataset, edge_split, embeddings, agg_method='concat')
-        all_results.append(results)
-
-    if 'prod_lr' in FLAGS.link_pred_model:
-        log.info('Performing product LR-based eval')
-        _, results = perform_lr_eval(dataset, edge_split, embeddings, agg_method='prod')
-        all_results.append(results)
 
     if FLAGS.do_classification_eval:
         log.info('Performing classification performance evaluation')
@@ -262,6 +240,9 @@ def do_all_eval(model_name,
 
 
 def perform_nn_link_eval(lp_zoo, dataset, edge_split, wb, embeddings: nn.Embedding, model_idx=0, patience=50):
+    """Trains a NN-based link prediction model on the provided embeddings in the transductive setting.
+    Returns the trained link predictor and various evaluation metrics.
+    """
     data = dataset[0]
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     valid_model = lp_zoo.filter_models(FLAGS.link_pred_model)[model_idx]  # should exist, checked in main()
@@ -319,12 +300,8 @@ def perform_nn_link_eval(lp_zoo, dataset, edge_split, wb, embeddings: nn.Embeddi
             if FLAGS.trivial_neg_sampling == 'true':
                 neg_edge = torch.randint(0, data.num_nodes, pos_edge.size(), dtype=torch.long, device=device)
             elif FLAGS.trivial_neg_sampling == 'false':
-                # TODO(author): is this slow? maybe it's better to use train_edge which is already on GPU
-                #   downside is that we might lose edge direction information on some datasets (e.g. ogbl-collab),
-                #   although we probably are using trivial random sampling on those anyways
                 neg_edge = negative_sampling(data.edge_index, data.num_nodes, pos_edge.size(1)).to(device)
-            else:
-                raise ValueError('Invalid flag value for trivial_neg_sampling...')
+
             neg_combined = torch.hstack((embeddings(neg_edge[0]), embeddings(neg_edge[1])))
             neg_out = model(neg_combined).squeeze()
 
@@ -420,10 +397,9 @@ def perform_nn_link_eval(lp_zoo, dataset, edge_split, wb, embeddings: nn.Embeddi
     return model, results
 
 
-def perform_production_nn_link_eval(lp_zoo,
+def perform_inductive_nn_link_eval(lp_zoo,
                                     train_data,
                                     val_data,
-                                    inference_data,
                                     train_embeddings,
                                     inference_embeddings,
                                     device,
@@ -433,6 +409,9 @@ def perform_production_nn_link_eval(lp_zoo,
                                     model_idx=0,
                                     patience=50,
                                     flags=FLAGS):
+    """Trains a NN-based link prediction model on the provided embeddings in the inductive setting.
+    Returns the trained link predictor and various evaluation metrics.
+    """
     assert (wb is not None)
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -580,110 +559,3 @@ def perform_production_nn_link_eval(lp_zoo,
         'fixed': True
     }
     return model, results
-
-
-def perform_cosine_eval(edge_split, embeddings: nn.Embedding):
-    c_embeddings = copy.deepcopy(embeddings).cpu()
-    # Get edges
-    train_edge, valid_edge, test_edge = edge_split['train']['edge'].T.cpu(), edge_split['valid']['edge'].T.cpu(
-    ), edge_split['test']['edge'].T.cpu()
-    valid_edge_neg, test_edge_neg = edge_split['valid']['edge_neg'].T.cpu(), edge_split['test']['edge_neg'].T.cpu()
-
-    test_edge_label_index = torch.cat([test_edge, test_edge_neg], dim=-1)
-    test_edge_embeddings = c_embeddings(test_edge_label_index).detach()
-
-    st_time = time.time_ns()
-    test_pred = F.cosine_similarity(test_edge_embeddings[0, :, :], test_edge_embeddings[1, :, :], dim=1)
-    end_time = time.time_ns()
-    log.info(f'Took {(end_time - st_time) / 1e9}s to calculate cosine distances')
-    assert (test_pred.size(0) == (test_edge.size(1) + test_edge_neg.size(1)))
-
-    n_test_pos = test_edge.size(1)
-
-    # make sure we didn't mess up dims
-    assert (n_test_pos > 2)
-    test_pos_pred = test_pred[:n_test_pos]
-    test_neg_pred = test_pred[n_test_pos:]
-
-    return {'type': 'cosine', **eval_all(test_pos_pred, test_neg_pred)}
-
-
-def perform_lr_eval(dataset, edge_split, embeddings: nn.Embedding, agg_method='concat'):
-    type_name = 'lr' if agg_method == 'concat' else 'prod_lr'
-    c_embeddings = copy.deepcopy(embeddings).cpu()
-    # Get edges
-    train_edge, valid_edge, test_edge = edge_split['train']['edge'].T.cpu(), edge_split['valid']['edge'].T.cpu(
-    ), edge_split['test']['edge'].T.cpu()
-    valid_edge_neg, test_edge_neg = edge_split['valid']['edge_neg'].T.cpu(), edge_split['test']['edge_neg'].T.cpu()
-
-    train_neg_edge_index = negative_sampling(edge_index=train_edge,
-                                             num_nodes=dataset[0].num_nodes,
-                                             num_neg_samples=train_edge.size(1),
-                                             method='sparse')
-
-    train_edge_label_index = torch.cat([train_edge, train_neg_edge_index], dim=-1)
-    test_edge_label_index = torch.cat([test_edge, test_edge_neg], dim=-1)
-    valid_edge_label_index = torch.cat([valid_edge, valid_edge_neg], dim=-1)
-
-    train_edge_embeddings = c_embeddings(train_edge_label_index).detach()
-    test_edge_embeddings = c_embeddings(test_edge_label_index).detach()
-    valid_edge_embeddings = c_embeddings(valid_edge_label_index).detach()
-
-    if agg_method == 'concat':
-        X_train = torch.hstack((train_edge_embeddings[0, :, :], train_edge_embeddings[1, :, :])).cpu().numpy()
-        X_valid = torch.hstack((valid_edge_embeddings[0, :, :], valid_edge_embeddings[1, :, :])).cpu().numpy()
-        X_test = torch.hstack((test_edge_embeddings[0, :, :], test_edge_embeddings[1, :, :])).cpu().numpy()
-    elif agg_method == 'prod':
-        X_train = torch.mul(train_edge_embeddings[0, :, :], train_edge_embeddings[1, :, :]).cpu().numpy()
-        X_valid = torch.mul(valid_edge_embeddings[0, :, :], valid_edge_embeddings[1, :, :]).cpu().numpy()
-        X_test = torch.mul(test_edge_embeddings[0, :, :], test_edge_embeddings[1, :, :]).cpu().numpy()
-    else:
-        raise ValueError(f'Unknown agg_method: {agg_method}')
-
-    y_train = torch.cat([train_edge.new_ones(train_edge.size(1)),
-                         train_edge.new_zeros(train_neg_edge_index.size(1))],
-                        dim=0).float().cpu().numpy()
-    y_valid = torch.cat([valid_edge.new_ones(valid_edge.size(1)),
-                         valid_edge.new_zeros(valid_edge_neg.size(1))], dim=0).float().cpu().numpy()
-
-    # results = []
-    # TODO(author): allow repeats?
-    # for _ in range(repeats):
-    best_roc = -1
-    best_c = 1
-    best_clf = None
-
-    # logreg = LogisticRegression(solver='liblinear')
-    # parameters = { 'C' : 2.0 ** np.arange(-10, 11) }
-    transformer = RobustScaler().fit(X_train)
-    X_train_scaled = transformer.transform(X_train)
-    X_valid_scaled = transformer.transform(X_valid)
-    X_test_scaled = transformer.transform(X_test)
-    assert (X_test_scaled is not None)
-
-    for c in 2.0**np.arange(-10, 11):
-        log.info(f'Evaluating c={c}')
-        st_time = time.time_ns()
-        clf = LogisticRegression(solver='saga', C=c, n_jobs=-1)
-        clf.fit(X_train_scaled, y_train)
-
-        pred = clf.predict_proba(X_valid_scaled)[:, 1]
-        roc = roc_auc_score(y_valid, pred)
-        if best_clf is None or roc > best_roc:
-            best_roc = roc
-            best_c = c
-            best_clf = clf
-
-        end_time = time.time_ns()
-        log.info(f'Took {(end_time - st_time) / 1e9}s to evaluate this value of C')
-
-    log.info(f'best C: {best_c}')
-    test_pred = best_clf.predict_proba(X_test_scaled)[:, 1]
-    n_test_pos = test_edge.size(1)
-
-    # make sure we didn't mess up dims
-    assert (n_test_pos > 2)
-    test_pos_pred = test_pred[:n_test_pos]
-    test_neg_pred = test_pred[n_test_pos:]
-
-    return best_clf, {'type': type_name, **eval_all(torch.tensor(test_pos_pred), torch.tensor(test_neg_pred))}

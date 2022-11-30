@@ -7,7 +7,10 @@ from sklearn.preprocessing import OneHotEncoder, normalize
 
 
 def fit_logistic_regression(X, y, data_random_seed=1, repeat=1):
-    # transfrom targets to one-hot vector
+    """Fit a logistic regression model to the data.
+    This is from the official BGRL implementation.
+    """
+    # transform targets to one-hot vector
     one_hot_encoder = OneHotEncoder(categories='auto', sparse=False)
 
     y = one_hot_encoder.fit_transform(y.reshape(-1, 1)).astype(np.bool)

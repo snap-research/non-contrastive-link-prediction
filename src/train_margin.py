@@ -13,10 +13,9 @@ import wandb
 import torch.nn.functional as F
 
 from lib.data import get_dataset
-from lib.link_predictors import LinkPredictorZoo
-from lib.models import EncoderZoo
+from lib.models import LinkPredictorZoo, EncoderZoo
 from lib.training import perform_transductive_margin_training, perform_inductive_margin_training
-from lib.eval import do_all_eval, do_production_eval
+from lib.eval import do_all_eval, do_inductive_eval
 from ogb.linkproppred import PygLinkPropPredDataset
 
 import lib.flags as FlagHelper
@@ -141,7 +140,7 @@ def main(_):
             encoder, representations, time_bundle = perform_inductive_margin_training(
                 training_data, val_data, data, output_dir, device, input_size, has_features, g_zoo)
 
-            results = do_production_eval(model_name=get_full_model_name(),
+            results = do_inductive_eval(model_name=get_full_model_name(),
                                          output_dir=output_dir,
                                          encoder=encoder,
                                          valid_models=valid_models,

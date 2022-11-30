@@ -90,8 +90,7 @@ class DropEdges:
 
 
 class AddEdges:
-    """Perform random edge addition.
-    """
+    """Perform random edge addition."""
 
     def __init__(self, sample_size_ratio=0.1):
         self.sample_size_ratio = sample_size_ratio
@@ -110,8 +109,7 @@ class AddEdges:
 
 
 class RandomizeFeatures:
-    """Completely randomize the feature matrix (maintain the same size).
-    """
+    """Completely randomize the feature matrix (maintain the same size)."""
 
     def __init__(self):
         pass

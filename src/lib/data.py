@@ -10,7 +10,7 @@ from ogb.linkproppred import PygLinkPropPredDataset
 
 
 class ConvertToFloat(BaseTransform):
-
+    """Tranform to convert features to floats."""
     def __call__(self, data: Union[Data, HeteroData]):
         if data.x is not None:
             data.x = data.x.float()  # type: ignore
@@ -20,7 +20,7 @@ class ConvertToFloat(BaseTransform):
         return f'{self.__class__.__name__}()'
 
 
-def get_dataset(root, name: str, transform=Compose([ConvertToFloat(), NormalizeFeatures()])):
+def get_dataset(root, name, transform=Compose([ConvertToFloat(), NormalizeFeatures()])):
     if name.startswith('ogbl-'):
         dataset = PygLinkPropPredDataset(name=name, root=root, transform=transform)
         return dataset
@@ -55,13 +55,12 @@ def get_wiki_cs(root, transform=NormalizeFeatures()):
     return [data], np.array(data.train_mask), np.array(data.val_mask), np.array(data.test_mask)
 
 
-class ConcatDataset(InMemoryDataset):
-    r"""
-    PyG Dataset class for merging multiple Dataset objects into one.
+class PygConcatDataset(InMemoryDataset):
+    """PyG Dataset class for merging multiple Dataset objects into one.
     """
 
     def __init__(self, datasets):
-        super(ConcatDataset, self).__init__()
+        super(PygConcatDataset, self).__init__()
         self.__indices__ = None
         self.__data_list__ = []
         for dataset in datasets:

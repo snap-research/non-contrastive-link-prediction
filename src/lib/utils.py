@@ -13,48 +13,11 @@ import math
 from absl import flags
 import pandas as pd
 
+from .models import GraceEncoder
+
 log = logging.getLogger(__name__)
 FLAGS = flags.FLAGS
 SMALL_DATASETS = set(['cora', 'citeseer'])
-
-
-def write_results(model_name, output_dir, results):
-    """Write the given model results to results.json in the provided
-    output directory
-
-    Args:
-        model_name (str): Model name
-        output_dir (str): Output directory
-        results (dict): Dictionary of model results
-    """
-    results_path = path.join(output_dir, 'results.json')
-
-    if path.exists(results_path):
-        log.info('Existing file found, appending results')
-        with open(results_path, 'rb') as f:
-            contents = json.load(f)
-        log.debug(f'Existing contents: {contents}')
-
-        contents['results'].extend(results)
-
-        mn = model_name
-        if contents['model_name'] != mn:
-            log.warn(f'[WARNING]: Model names do not match - {contents["model_name"]} vs {mn}')
-
-        with open(results_path, 'w') as f:
-            json.dump({
-                'model_name': mn,
-                'results': contents['results'],
-            }, f, indent=4)
-        log.info(f'Appended results to {results_path}')
-    else:
-        log.info('No results file found, writing to new one')
-        with open(results_path, 'w') as f:
-            json.dump({
-                'model_name': model_name,
-                'results': results,
-            }, f, indent=4)
-        log.info(f'Wrote results to file at {results_path}')
 
 
 def add_node_feats(data, device, type='degree'):
@@ -177,7 +140,7 @@ def do_node_inductive_edge_split(dataset: Dataset,
     inference_edge_index = torch.cat([old_old_train, old_old_val, old_new_train, new_new_train], dim=-1)
     inference_data = Data(new_data.x, inference_edge_index)
 
-    print("===== Dataset Infomation =====")
+    print("===== Dataset Information =====")
     print("#Old Nodes:\t" + str(training_only_x.size(0)))
     print("#New Nodes:\t" + str(new_data.x.size(0) - training_only_x.size(0)))
     print("#Old-Old testing edges:\t" + str(old_old_test.size(1)))
@@ -276,10 +239,52 @@ def merge_multirun_results(all_results):
     assert (test_mean is not None)
     return agg_results, {**keywise_prepend(val_mean, 'val_mean_'), **keywise_prepend(test_mean, 'test_mean_')}
 
+def compute_representations_only(net, dataset, device, has_features=True, feature_type='degree'):
+    r"""Pre-computes the representations for the entire dataset.
+    Does not include node labels.
 
-if __name__ == "__main__":
-    from data import get_dataset
+    Returns:
+        torch.Tensor: Representations
+    """
+    net.eval()
+    reps = []
 
-    dset = get_dataset('./data', 'cora')
-    all_data = do_inductive_edge_split(dset)
-    print(all_data)
+    for data in dataset:
+        # forward
+        data = data.to(device)
+        if not has_features:
+            if data.x is not None:
+                print('[WARNING] features overidden in adj matrix')
+            data.x = net.get_node_feats().weight.data
+        elif data.x is None:
+            data = add_node_feats(data, device=device, type=feature_type)
+
+        with torch.no_grad():
+            if isinstance(net, GraceEncoder):
+                reps.append(net(data.x, data.edge_index))
+            else:
+                reps.append(net(data))
+
+    reps = torch.cat(reps, dim=0)
+    return reps
+
+def compute_data_representations_only(net, data, device, has_features=True):
+    r"""Pre-computes the representations for the entire dataset.
+    Does not include node labels.
+
+    Returns:
+        torch.Tensor: Representations
+    """
+    net.eval()
+    reps = []
+
+    if not has_features:
+        if data.x is not None:
+            print('[WARNING] features overidden in adj matrix')
+        data.x = net.get_node_feats().weight.data
+
+    with torch.no_grad():
+        reps.append(net(data))
+
+    reps = torch.cat(reps, dim=0).to(device)
+    return reps

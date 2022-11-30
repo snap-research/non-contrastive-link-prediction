@@ -7,15 +7,15 @@ from absl import app
 from absl import flags
 import torch
 from torch import nn
+import wandb
 from torch.utils.tensorboard import SummaryWriter  # type: ignore
 from lib.data import get_dataset, get_wiki_cs, ConvertToFloat
-from lib.bgrl import compute_data_representations_only
-from lib.link_predictors import LinkPredictorZoo
+from lib.utils import compute_data_representations_only
+from lib.models.decoders import LinkPredictorZoo
 from lib.models import EncoderZoo
-from lib.eval import do_all_eval, do_production_eval, perform_nn_link_eval
+from lib.eval import do_all_eval, do_inductive_eval, perform_nn_link_eval
 from ogb.linkproppred import PygLinkPropPredDataset
 from lib.training import perform_bgrl_training, perform_cca_ssg_training, perform_gbt_training, perform_triplet_training
-import wandb
 from lib.transforms import VALID_NEG_TRANSFORMS, VALID_TRANSFORMS
 from lib.utils import add_node_feats, do_node_inductive_edge_split, do_transductive_edge_split, is_small_dset, merge_multirun_results, set_random_seeds
 import lib.flags as FlagHelper
@@ -49,7 +49,6 @@ flags.DEFINE_integer('n_workers', 0, 'Number of workers to use')
 flags.DEFINE_integer('predictor_hidden_size', 512, 'Hidden size of projector.')
 
 # Training hyperparameters.
-flags.DEFINE_float('cyclic_lr', 0.1, 'The learning rate for model training.')
 flags.DEFINE_float('mm', 0.99, 'The momentum for moving average.')
 flags.DEFINE_integer('lr_warmup_epochs', 1000, 'Warmup period for learning rate.')
 flags.DEFINE_bool('training_early_stop', False, 'Whether or not to perform early stopping on the training loss')
@@ -66,7 +65,6 @@ flags.DEFINE_float('neg_lambda', 0.5, 'Weight to use for the negative triplet he
 flags.DEFINE_integer('eval_epochs', 5, 'Evaluate every eval_epochs.')
 
 # Link prediction model-specific flags
-# MLP:
 flags.DEFINE_bool('save_extra', False, 'Whether or not to save extra plotting/debugging info')
 flags.DEFINE_bool('dataset_fixed', True, 'Whether or not a message-passing vs normal edges bug was fixed')
 flags.DEFINE_bool('adjust_layer_sizes', False, 'Whether or not to adjust MLP layer sizes for fair comparisons')
@@ -233,7 +231,7 @@ def main(_):
             raise NotImplementedError()
 
         if time_bundle is not None:
-            (total_time, std_time, mean_time, times) = time_bundle
+            (total_time, _, _, times) = time_bundle
             all_times.append(times.tolist())
             total_times.append(int(total_time))
 
@@ -248,7 +246,7 @@ def main(_):
                                                 lp_zoo=lp_zoo,
                                                 wb=wandb)
         else: # inductive
-            results = do_production_eval(model_name=get_full_model_name(),
+            results = do_inductive_eval(model_name=get_full_model_name(),
                                         output_dir=OUTPUT_DIR,
                                         encoder=encoder,
                                         valid_models=valid_models,

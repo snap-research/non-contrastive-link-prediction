@@ -9,6 +9,10 @@ from .transforms import VALID_TRANSFORMS
 FLAGS = flags.FLAGS
 log = logging.getLogger(__name__)
 
+def between_zero_one(x):
+    """Checks if x is between zero and one. Used by validators."""
+    return 0 < x < 1
+
 def define_flags(model_name):
     define_shared_flags(model_name)
     if model_name == 'GRACE' or model_name == 'NCL':
@@ -58,9 +62,6 @@ def define_aug_flags():
     flags.DEFINE_float('drop_feat_p_2', 0., 'Probability of node feature dropout 2.')
     flags.DEFINE_enum('graph_transforms', 'standard', list(VALID_TRANSFORMS.keys()),
                   'Which graph augmentations to use.')
-
-    def between_zero_one(x):
-        return 0 < x < 1
 
     flags.register_validator('drop_edge_p_1', between_zero_one, 'must be between 0 and 1')
     flags.register_validator('drop_feat_p_1', between_zero_one, 'must be between 0 and 1')
