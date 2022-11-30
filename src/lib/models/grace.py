@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
+
 class GraceEncoder(torch.nn.Module):
     """Encoder used by GRACE.
     From: https://github.com/CRIPAC-DIG/GRACE/blob/51b44961b68b2f38c60f85cf83db13bed8fd0780/model.py
@@ -10,7 +11,15 @@ class GraceEncoder(torch.nn.Module):
     Args:
         torch (_type_): _description_
     """
-    def __init__(self, in_channels: int, out_channels: int, activation, base_model=GCNConv, k: int = 2):
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        activation,
+        base_model=GCNConv,
+        k: int = 2,
+    ):
         super(GraceEncoder, self).__init__()
         self.base_model = base_model
 
@@ -29,9 +38,15 @@ class GraceEncoder(torch.nn.Module):
             x = self.activation(self.conv[i](x, edge_index))
         return x
 
-class GraceModel(torch.nn.Module):
 
-    def __init__(self, encoder: GraceEncoder, num_hidden: int, num_proj_hidden: int, tau: float = 0.5):
+class GraceModel(torch.nn.Module):
+    def __init__(
+        self,
+        encoder: GraceEncoder,
+        num_hidden: int,
+        num_proj_hidden: int,
+        tau: float = 0.5,
+    ):
         super(GraceModel, self).__init__()
         self.encoder: GraceEncoder = encoder
         self.tau: float = tau
@@ -56,7 +71,10 @@ class GraceModel(torch.nn.Module):
         refl_sim = f(self.sim(z1, z1))
         between_sim = f(self.sim(z1, z2))
 
-        return -torch.log(between_sim.diag() / (refl_sim.sum(1) + between_sim.sum(1) - refl_sim.diag()))
+        return -torch.log(
+            between_sim.diag()
+            / (refl_sim.sum(1) + between_sim.sum(1) - refl_sim.diag())
+        )
 
     def batched_semi_loss(self, z1: torch.Tensor, z2: torch.Tensor, batch_size: int):
         # Space complexity: O(BN) (semi_loss: O(N^2))
@@ -68,17 +86,26 @@ class GraceModel(torch.nn.Module):
         losses = []
 
         for i in range(num_batches):
-            mask = indices[i * batch_size:(i + 1) * batch_size]
+            mask = indices[i * batch_size : (i + 1) * batch_size]
             refl_sim = f(self.sim(z1[mask], z1))  # [B, N]
             between_sim = f(self.sim(z1[mask], z2))  # [B, N]
 
-            losses.append(-torch.log(between_sim[:, i * batch_size:(i + 1) * batch_size].diag() /
-                                     (refl_sim.sum(1) + between_sim.sum(1) - refl_sim[:, i * batch_size:
-                                                                                      (i + 1) * batch_size].diag())))
+            losses.append(
+                -torch.log(
+                    between_sim[:, i * batch_size : (i + 1) * batch_size].diag()
+                    / (
+                        refl_sim.sum(1)
+                        + between_sim.sum(1)
+                        - refl_sim[:, i * batch_size : (i + 1) * batch_size].diag()
+                    )
+                )
+            )
 
         return torch.cat(losses)
 
-    def loss(self, z1: torch.Tensor, z2: torch.Tensor, mean: bool = True, batch_size: int = 0):
+    def loss(
+        self, z1: torch.Tensor, z2: torch.Tensor, mean: bool = True, batch_size: int = 0
+    ):
         h1 = self.projection(z1)
         h2 = self.projection(z2)
 

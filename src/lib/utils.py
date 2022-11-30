@@ -1,13 +1,17 @@
-import json
 import logging
-from os import path
 import random
 
 import numpy as np
 import torch
 from torch_geometric.data import Data, Dataset
 from torch_geometric.transforms import RandomLinkSplit, RandomNodeSplit
-from torch_geometric.utils import (negative_sampling, add_self_loops, train_test_split_edges, to_networkx, subgraph)
+from torch_geometric.utils import (
+    negative_sampling,
+    add_self_loops,
+    train_test_split_edges,
+    to_networkx,
+    subgraph,
+)
 from torch.nn.functional import one_hot
 import math
 from absl import flags
@@ -21,12 +25,13 @@ SMALL_DATASETS = set(['cora', 'citeseer'])
 
 
 def add_node_feats(data, device, type='degree'):
-    assert (type == 'degree')
+    assert type == 'degree'
 
     G = to_networkx(data)
     degrees = torch.tensor([v for (_, v) in G.degree()])  # type: ignore
     data.x = one_hot(degrees).to(device).float()
     return data
+
 
 def create_mask(base_mask, rows, cols):
     return base_mask[rows] & base_mask[cols]
@@ -40,8 +45,8 @@ def split_edges(edge_index, val_ratio, test_ratio):
     num_test = int(test_ratio * perm.numel())
     num_train = perm.numel() - num_val - num_test
     train_edges = perm[:num_train]
-    val_edges = perm[num_train:num_train + num_val]
-    test_edges = perm[num_train + num_val:]
+    val_edges = perm[num_train : num_train + num_val]
+    test_edges = perm[num_train + num_val :]
     train_edge_index = edge_index[:, train_edges]
     train_edge_index = torch.cat([train_edge_index, train_edge_index.flip([0])], dim=-1)
     val_edge_index = edge_index[:, val_edges]
@@ -51,11 +56,13 @@ def split_edges(edge_index, val_ratio, test_ratio):
     return train_edge_index, val_edge_index, test_edge_index
 
 
-def do_node_inductive_edge_split(dataset: Dataset,
-                                 small_dataset=False,
-                                 split_seed=234,
-                                 big_split_ratio_override=None,
-                                 return_split=False):
+def do_node_inductive_edge_split(
+    dataset: Dataset,
+    small_dataset=False,
+    split_seed=234,
+    big_split_ratio_override=None,
+    return_split=False,
+):
     """Perform an inductive split on the dataset, as described in our paper.
     We perform the following steps:
         1) Withhold a portion of the edges (and same number of disconnected node pairs)
@@ -101,16 +108,18 @@ def do_node_inductive_edge_split(dataset: Dataset,
     torch.manual_seed(split_seed)
 
     # Assume we only have 1 graph in our dataset
-    assert (len(dataset) == 1)
+    assert len(dataset) == 1
     data = dataset[0]
 
     # Some assertions to help with type inference
-    assert (isinstance(data, Data))
-    assert (data.num_nodes is not None)
+    assert isinstance(data, Data)
+    assert data.num_nodes is not None
 
     # sample some negatives to use globally
     num_negatives = round(test_ratio * data.edge_index.size(1) / 2)
-    negative_samples = negative_sampling(data.edge_index, data.num_nodes, num_negatives, force_undirected=True)
+    negative_samples = negative_sampling(
+        data.edge_index, data.num_nodes, num_negatives, force_undirected=True
+    )
 
     # Split the nodes into "old" and "new" nodes
     node_splitter = RandomNodeSplit(num_val=0.0, num_test=val_node_ratio)
@@ -120,11 +129,14 @@ def do_node_inductive_edge_split(dataset: Dataset,
     rows, cols = new_data.edge_index
     old_old_edges = create_mask(new_data.train_mask, rows, cols)
     old_old_ei = new_data.edge_index[:, old_old_edges]
-    old_old_train, old_old_val, old_old_test = split_edges(old_old_ei, old_old_extra_ratio, test_ratio)
+    old_old_train, old_old_val, old_old_test = split_edges(
+        old_old_ei, old_old_extra_ratio, test_ratio
+    )
 
     # Separate the edges between old and new nodes
-    old_new_edges = (new_data.train_mask[rows] & new_data.test_mask[cols]) | (new_data.test_mask[rows] &
-                                                                              new_data.train_mask[cols])
+    old_new_edges = (new_data.train_mask[rows] & new_data.test_mask[cols]) | (
+        new_data.test_mask[rows] & new_data.train_mask[cols]
+    )
     old_new_ei = new_data.edge_index[:, old_new_edges]
     old_new_train, _, old_new_test = split_edges(old_new_ei, 0.0, test_ratio)
 
@@ -139,7 +151,9 @@ def do_node_inductive_edge_split(dataset: Dataset,
     test_edge_bundle = (old_old_test, old_new_test, new_new_test, test_edge_index)
 
     # Use the induced subgraph of only the old-old nodes
-    training_only_ei = subgraph(new_data.train_mask, old_old_train, relabel_nodes=True)[0]
+    training_only_ei = subgraph(new_data.train_mask, old_old_train, relabel_nodes=True)[
+        0
+    ]
     training_only_x = new_data.x[new_data.train_mask]
 
     given_data = Data(training_only_x, training_only_ei)
@@ -148,7 +162,9 @@ def do_node_inductive_edge_split(dataset: Dataset,
     training_data, _, val_data = val_splitter(given_data)
 
     # Create the inference-only data.
-    inference_edge_index = torch.cat([old_old_train, old_old_val, old_new_train, new_new_train], dim=-1)
+    inference_edge_index = torch.cat(
+        [old_old_train, old_old_val, old_new_train, new_new_train], dim=-1
+    )
     inference_data = Data(new_data.x, inference_edge_index)
 
     log.debug("===== Dataset Information =====")
@@ -159,11 +175,28 @@ def do_node_inductive_edge_split(dataset: Dataset,
     log.debug("#New-New testing edges:\t" + str(new_new_test.size(1)))
 
     if return_split:
-        return training_data, val_data, inference_data, data, test_edge_bundle, negative_samples, new_data
-    return training_data, val_data, inference_data, data, test_edge_bundle, negative_samples
+        return (
+            training_data,
+            val_data,
+            inference_data,
+            data,
+            test_edge_bundle,
+            negative_samples,
+            new_data,
+        )
+    return (
+        training_data,
+        val_data,
+        inference_data,
+        data,
+        test_edge_bundle,
+        negative_samples,
+    )
 
 
-def do_transductive_edge_split(dataset, fast_split=False, val_ratio=0.05, test_ratio=0.1, split_seed=234):
+def do_transductive_edge_split(
+    dataset, fast_split=False, val_ratio=0.05, test_ratio=0.1, split_seed=234
+):
     """Splits a PyG dataset into train/test/valid sets.
     Returns a dictionary in a similar format to OGB's `get_edge_split` function.
     From:
@@ -176,9 +209,11 @@ def do_transductive_edge_split(dataset, fast_split=False, val_ratio=0.05, test_r
     if not fast_split:
         data = train_test_split_edges(data, val_ratio, test_ratio)
         edge_index, _ = add_self_loops(data.train_pos_edge_index)
-        data.train_neg_edge_index = negative_sampling(edge_index,
-                                                      num_nodes=data.num_nodes,
-                                                      num_neg_samples=data.train_pos_edge_index.size(1))
+        data.train_neg_edge_index = negative_sampling(
+            edge_index,
+            num_nodes=data.num_nodes,
+            num_neg_samples=data.train_pos_edge_index.size(1),
+        )
     else:
         num_nodes = data.num_nodes
         row, col = data.edge_index
@@ -192,15 +227,17 @@ def do_transductive_edge_split(dataset, fast_split=False, val_ratio=0.05, test_r
         row, col = row[perm], col[perm]
         r, c = row[:n_v], col[:n_v]
         data.val_pos_edge_index = torch.stack([r, c], dim=0)
-        r, c = row[n_v:n_v + n_t], col[n_v:n_v + n_t]
+        r, c = row[n_v : n_v + n_t], col[n_v : n_v + n_t]
         data.test_pos_edge_index = torch.stack([r, c], dim=0)
-        r, c = row[n_v + n_t:], col[n_v + n_t:]
+        r, c = row[n_v + n_t :], col[n_v + n_t :]
         data.train_pos_edge_index = torch.stack([r, c], dim=0)
         # Negative edges (cannot guarantee (i,j) and (j,i) won't both appear)
-        neg_edge_index = negative_sampling(data.edge_index, num_nodes=num_nodes, num_neg_samples=row.size(0))
+        neg_edge_index = negative_sampling(
+            data.edge_index, num_nodes=num_nodes, num_neg_samples=row.size(0)
+        )
         data.val_neg_edge_index = neg_edge_index[:, :n_v]
-        data.test_neg_edge_index = neg_edge_index[:, n_v:n_v + n_t]
-        data.train_neg_edge_index = neg_edge_index[:, n_v + n_t:]
+        data.test_neg_edge_index = neg_edge_index[:, n_v : n_v + n_t]
+        data.train_neg_edge_index = neg_edge_index[:, n_v + n_t :]
 
     split_edge = {'train': {}, 'valid': {}, 'test': {}}
     split_edge['train']['edge'] = data.train_pos_edge_index.t()
@@ -243,19 +280,27 @@ def merge_multirun_results(all_results):
 
         val_mean, val_std = keywise_agg(val_res)
         test_mean, test_std = keywise_agg(test_res)
-        agg_results.append({
-            'type': group_type,
-            'val_mean': val_mean,
-            'val_std': val_std,
-            'test_mean': test_mean,
-            'test_std': test_std
-        })
+        agg_results.append(
+            {
+                'type': group_type,
+                'val_mean': val_mean,
+                'val_std': val_std,
+                'test_mean': test_mean,
+                'test_std': test_std,
+            }
+        )
 
-    assert (val_mean is not None)
-    assert (test_mean is not None)
-    return agg_results, {**keywise_prepend(val_mean, 'val_mean_'), **keywise_prepend(test_mean, 'test_mean_')}
+    assert val_mean is not None
+    assert test_mean is not None
+    return agg_results, {
+        **keywise_prepend(val_mean, 'val_mean_'),
+        **keywise_prepend(test_mean, 'test_mean_'),
+    }
 
-def compute_representations_only(net, dataset, device, has_features=True, feature_type='degree'):
+
+def compute_representations_only(
+    net, dataset, device, has_features=True, feature_type='degree'
+):
     """Pre-computes the representations for the entire dataset.
     Does not include node labels.
 
@@ -283,6 +328,7 @@ def compute_representations_only(net, dataset, device, has_features=True, featur
 
     reps = torch.cat(reps, dim=0)
     return reps
+
 
 def compute_data_representations_only(net, data, device, has_features=True):
     r"""Pre-computes the representations for the entire dataset.

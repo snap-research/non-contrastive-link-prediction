@@ -11,6 +11,7 @@ from ogb.linkproppred import PygLinkPropPredDataset
 
 class ConvertToFloat(BaseTransform):
     """Tranform to convert features to floats."""
+
     def __call__(self, data: Union[Data, HeteroData]):
         if data.x is not None:
             data.x = data.x.float()  # type: ignore
@@ -38,7 +39,9 @@ def get_dataset(root, name, transform=Compose([ConvertToFloat(), NormalizeFeatur
         'texas': (datasets.WebKB, 'Texas'),
     }
 
-    assert name in pyg_dataset_dict, "Dataset must be in {}".format(list(pyg_dataset_dict.keys()))
+    assert name in pyg_dataset_dict, "Dataset must be in {}".format(
+        list(pyg_dataset_dict.keys())
+    )
 
     dataset_class, name = pyg_dataset_dict[name]
     dataset = dataset_class(root, name=name, transform=transform)
@@ -52,12 +55,16 @@ def get_wiki_cs(root, transform=NormalizeFeatures()):
     std, mean = torch.std_mean(data.x, dim=0, unbiased=False)
     data.x = (data.x - mean) / std
     data.edge_index = to_undirected(data.edge_index)
-    return [data], np.array(data.train_mask), np.array(data.val_mask), np.array(data.test_mask)
+    return (
+        [data],
+        np.array(data.train_mask),
+        np.array(data.val_mask),
+        np.array(data.test_mask),
+    )
 
 
 class PygConcatDataset(InMemoryDataset):
-    """PyG Dataset class for merging multiple Dataset objects into one.
-    """
+    """PyG Dataset class for merging multiple Dataset objects into one."""
 
     def __init__(self, datasets):
         super(PygConcatDataset, self).__init__()

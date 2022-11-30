@@ -13,11 +13,18 @@ class DropFeatures:
 
     def __init__(self, p=None):
         assert p is not None
-        assert 0. < p < 1., 'Dropout probability has to be between 0 and 1, but got %.2f' % p
+        assert 0.0 < p < 1.0, (
+            'Dropout probability has to be between 0 and 1, but got %.2f' % p
+        )
         self.p = p
 
     def __call__(self, data):
-        drop_mask = torch.empty((data.x.size(1),), dtype=torch.float32, device=data.x.device).uniform_(0, 1) < self.p
+        drop_mask = (
+            torch.empty(
+                (data.x.size(1),), dtype=torch.float32, device=data.x.device
+            ).uniform_(0, 1)
+            < self.p
+        )
         data.x[:, drop_mask] = 0
         return data
 
@@ -57,7 +64,9 @@ class RandomRangeEdges:
         n_edges = data.edge_index.size(1)
 
         n_edges = random.randint(math.ceil(n_edges * 0.75), math.ceil(n_edges * 1.25))
-        data.edge_index = torch.randint(0, n - 1, (2, n_edges), dtype=data.edge_index.dtype).to(data.edge_index.device)
+        data.edge_index = torch.randint(
+            0, n - 1, (2, n_edges), dtype=data.edge_index.dtype
+        ).to(data.edge_index.device)
         return data
 
     def __repr__(self):
@@ -69,7 +78,9 @@ class DropEdges:
 
     def __init__(self, p, force_undirected=False):
         assert p is not None
-        assert 0. < p < 1., 'Dropout probability has to be between 0 and 1, but got %.2f' % p
+        assert 0.0 < p < 1.0, (
+            'Dropout probability has to be between 0 and 1, but got %.2f' % p
+        )
 
         self.p = p
         self.force_undirected = force_undirected
@@ -78,7 +89,9 @@ class DropEdges:
         edge_index = data.edge_index
         edge_attr = data.edge_attr if 'edge_attr' in data else None
 
-        edge_index, edge_attr = dropout_adj(edge_index, edge_attr, p=self.p, force_undirected=self.force_undirected)
+        edge_index, edge_attr = dropout_adj(
+            edge_index, edge_attr, p=self.p, force_undirected=self.force_undirected
+        )
 
         data.edge_index = edge_index
         if edge_attr is not None:
@@ -86,7 +99,9 @@ class DropEdges:
         return data
 
     def __repr__(self):
-        return '{}(p={}, force_undirected={})'.format(self.__class__.__name__, self.p, self.force_undirected)
+        return '{}(p={}, force_undirected={})'.format(
+            self.__class__.__name__, self.p, self.force_undirected
+        )
 
 
 class AddEdges:
@@ -98,14 +113,18 @@ class AddEdges:
     def __call__(self, data):
         edge_index = data.edge_index
         n_samples = round(self.sample_size_ratio * edge_index)
-        neg_edges = negative_sampling(data.edge_index, num_nodes=data.num_nodes, num_neg_samples=n_samples)
+        neg_edges = negative_sampling(
+            data.edge_index, num_nodes=data.num_nodes, num_neg_samples=n_samples
+        )
 
         edge_index = torch.cat((edge_index, neg_edges))
         data.edge_index = edge_index
         return data
 
     def __repr__(self):
-        return '{}(sample_size_ratio={})'.format(self.__class__.__name__, self.sample_size_ratio)
+        return '{}(sample_size_ratio={})'.format(
+            self.__class__.__name__, self.sample_size_ratio
+        )
 
 
 class RandomizeFeatures:
@@ -119,33 +138,39 @@ class RandomizeFeatures:
         return data
 
     def __repr__(self):
-        return '{}(sample_size_ratio={})'.format(self.__class__.__name__, self.sample_size_ratio)
+        return '{}(sample_size_ratio={})'.format(
+            self.__class__.__name__, self.sample_size_ratio
+        )
 
 
-VALID_TRANSFORMS = dict({
-    'standard': ['DropEdges', 'DropFeatures'],
-    'all': ['DropEdges', 'DropFeatures'],
-    'none': [],
-    'drop-edge': ['DropEdges'],
-    'drop-feat': ['DropFeatures'],
-    'add-edges': ['AddEdges'],
-    'add-edges-feat-drop': ['AddEdges', 'DropFeatures']
-})
+VALID_TRANSFORMS = dict(
+    {
+        'standard': ['DropEdges', 'DropFeatures'],
+        'all': ['DropEdges', 'DropFeatures'],
+        'none': [],
+        'drop-edge': ['DropEdges'],
+        'drop-feat': ['DropFeatures'],
+        'add-edges': ['AddEdges'],
+        'add-edges-feat-drop': ['AddEdges', 'DropFeatures'],
+    }
+)
 
-VALID_NEG_TRANSFORMS = dict({
-    'heavy-sparsify': ['DropEdges', 'DropFeatures'],
-    'randomize-feats': ['RandomizeFeatures'],
-    'scramble-feats': ['ScrambleFeatures'],
-    'randomize-drop-combo': ['DropEdges', 'RandomizeFeatures'],
-    'scramble-drop-combo': ['ScrambleFeatures', 'DropEdges'],
-    'scramble-edge-combo': ['ScrambleFeatures', 'RandomEdges'],
-    'rand-rand-combo': ['RandomizeFeatures', 'RandomEdges'],
-    'rand-rand-rand-combo': ['RandomizeFeatures', 'RandomRangeEdges'],
-    'scramble-edge-choice': ['ScrambleFeaturesOrRandomEdges'],
-    'scramble-drop-choice': ['ScrambleFeatOrDropEdges'],
-    'random-edges': ['RandomEdges'],
-    'all-choice': ['AllChoice']
-})
+VALID_NEG_TRANSFORMS = dict(
+    {
+        'heavy-sparsify': ['DropEdges', 'DropFeatures'],
+        'randomize-feats': ['RandomizeFeatures'],
+        'scramble-feats': ['ScrambleFeatures'],
+        'randomize-drop-combo': ['DropEdges', 'RandomizeFeatures'],
+        'scramble-drop-combo': ['ScrambleFeatures', 'DropEdges'],
+        'scramble-edge-combo': ['ScrambleFeatures', 'RandomEdges'],
+        'rand-rand-combo': ['RandomizeFeatures', 'RandomEdges'],
+        'rand-rand-rand-combo': ['RandomizeFeatures', 'RandomRangeEdges'],
+        'scramble-edge-choice': ['ScrambleFeaturesOrRandomEdges'],
+        'scramble-drop-choice': ['ScrambleFeatOrDropEdges'],
+        'random-edges': ['RandomEdges'],
+        'all-choice': ['AllChoice'],
+    }
+)
 
 
 class ChooserTransformation:
@@ -155,7 +180,10 @@ class ChooserTransformation:
     """
 
     def __init__(self, transformations, transformation_args):
-        self.transformations = [transformations[i](*transformation_args[i]) for i in range(len(transformations))]
+        self.transformations = [
+            transformations[i](*transformation_args[i])
+            for i in range(len(transformations))
+        ]
         self.transformations_str = ',\n'.join([str(x) for x in transformations])
 
     def __call__(self, data):
@@ -189,11 +217,27 @@ def compose_transforms(transform_name, drop_edge_p, drop_feat_p, create_copy=Tru
         'ScrambleFeatures': (ScrambleFeatures, []),
         'RandomEdges': (RandomEdges, []),
         'RandomRangeEdges': (RandomRangeEdges, []),
-        'ScrambleFeaturesOrRandomEdges': (ChooserTransformation, [(ScrambleFeatures, RandomEdges), ([], [])]),
-        'ScrambleFeatOrDropEdges': (ChooserTransformation, [(ScrambleFeatures, DropEdges), ([], [0.95])]),
-        'AllChoice':
-            (ChooserTransformation, [(ScrambleFeatures, RandomEdges, RandomizeFeatures, DropFeatures, DropEdges),
-                                     ([], [], [], [0.95], [0.95])])
+        'ScrambleFeaturesOrRandomEdges': (
+            ChooserTransformation,
+            [(ScrambleFeatures, RandomEdges), ([], [])],
+        ),
+        'ScrambleFeatOrDropEdges': (
+            ChooserTransformation,
+            [(ScrambleFeatures, DropEdges), ([], [0.95])],
+        ),
+        'AllChoice': (
+            ChooserTransformation,
+            [
+                (
+                    ScrambleFeatures,
+                    RandomEdges,
+                    RandomizeFeatures,
+                    DropFeatures,
+                    DropEdges,
+                ),
+                ([], [], [], [0.95], [0.95]),
+            ],
+        ),
     }
 
     transforms = []

@@ -14,12 +14,20 @@ import torch.nn.functional as F
 
 from lib.data import get_dataset
 from lib.models import LinkPredictorZoo, EncoderZoo
-from lib.training import perform_transductive_margin_training, perform_inductive_margin_training
+from lib.training import (
+    perform_transductive_margin_training,
+    perform_inductive_margin_training,
+)
 from lib.eval import do_all_eval, do_inductive_eval
 from ogb.linkproppred import PygLinkPropPredDataset
 
 import lib.flags as FlagHelper
-from lib.utils import do_node_inductive_edge_split, do_transductive_edge_split, is_small_dset, merge_multirun_results
+from lib.utils import (
+    do_node_inductive_edge_split,
+    do_transductive_edge_split,
+    is_small_dset,
+    merge_multirun_results,
+)
 
 ######
 # Flags
@@ -37,11 +45,21 @@ flags.DEFINE_integer('lr_warmup_epochs', 500, 'Warmup period for learning rate.'
 
 flags.DEFINE_integer('eval_epochs', 5, 'Evaluate every eval_epochs.')
 
-flags.DEFINE_integer('pos_samples', 3, 'Number of positive samples to use for margin loss')
-flags.DEFINE_integer('neg_samples', 3, 'Number of negative samples to use for margin loss')
-flags.DEFINE_enum('pos_neg_agg_method', 'min_max', ['min_max', 'mean'],
-                  'Method used to aggregate margins from pos/neg samples')
-flags.DEFINE_bool('normalize_embeddings', False, 'Whether or not to normalize embeddings')
+flags.DEFINE_integer(
+    'pos_samples', 3, 'Number of positive samples to use for margin loss'
+)
+flags.DEFINE_integer(
+    'neg_samples', 3, 'Number of negative samples to use for margin loss'
+)
+flags.DEFINE_enum(
+    'pos_neg_agg_method',
+    'min_max',
+    ['min_max', 'mean'],
+    'Method used to aggregate margins from pos/neg samples',
+)
+flags.DEFINE_bool(
+    'normalize_embeddings', False, 'Whether or not to normalize embeddings'
+)
 
 
 def get_full_model_name():
@@ -71,15 +89,15 @@ def main(_):
 
     if len(valid_models) > 1:
         raise NotImplementedError(
-            'Currently, only one type of NN link pred model can be used at once')
+            'Currently, only one type of NN link pred model can be used at once'
+        )
 
     output_dir = FlagHelper.init_dir_save_flags(get_full_model_name())
 
-    wandb.init(project=f'ml-gcn',
-               config={
-                   'model_name': get_full_model_name(),
-                   **FLAGS.flag_values_dict()
-               })
+    wandb.init(
+        project=f'ml-gcn',
+        config={'model_name': get_full_model_name(), **FLAGS.flag_values_dict()},
+    )
 
     # load data
     st_time = time.time_ns()
@@ -94,10 +112,18 @@ def main(_):
         if isinstance(dataset, PygLinkPropPredDataset):
             raise NotImplementedError()
         else:
-            training_data, val_data, inference_data, data, test_edge_bundle, negative_samples = do_node_inductive_edge_split(
+            (
+                training_data,
+                val_data,
+                inference_data,
+                data,
+                test_edge_bundle,
+                negative_samples,
+            ) = do_node_inductive_edge_split(
                 dataset=dataset,
                 split_seed=FLAGS.split_seed,
-                small_dataset=is_small_dset(FLAGS.dataset))  # type: ignore
+                small_dataset=is_small_dset(FLAGS.dataset),
+            )  # type: ignore
 
     end_time = time.time_ns()
     log.info(f'Took {(end_time - st_time) / 1e9}s to load data')
@@ -120,38 +146,55 @@ def main(_):
         log.info('=' * 30)
 
         if FLAGS.split_method == 'transductive':
-            encoder, representations, time_bundle = perform_transductive_margin_training(
-                data, edge_split, output_dir, device, input_size, has_features, g_zoo)
+            (
+                encoder,
+                representations,
+                time_bundle,
+            ) = perform_transductive_margin_training(
+                data, edge_split, output_dir, device, input_size, has_features, g_zoo
+            )
 
             if FLAGS.normalize_embeddings:
                 log.info('Normalizing embeddings...')
                 representations = F.normalize(representations, dim=1)
             embeddings = nn.Embedding.from_pretrained(representations, freeze=True)
 
-            results, _ = do_all_eval(model_name=get_full_model_name(),
-                                     output_dir=output_dir,
-                                     valid_models=valid_models,
-                                     dataset=dataset,
-                                     edge_split=edge_split,
-                                     embeddings=embeddings,
-                                     lp_zoo=lp_zoo,
-                                     wb=wandb)
+            results, _ = do_all_eval(
+                model_name=get_full_model_name(),
+                output_dir=output_dir,
+                valid_models=valid_models,
+                dataset=dataset,
+                edge_split=edge_split,
+                embeddings=embeddings,
+                lp_zoo=lp_zoo,
+                wb=wandb,
+            )
         else:  # inductive
             encoder, representations, time_bundle = perform_inductive_margin_training(
-                training_data, val_data, data, output_dir, device, input_size, has_features, g_zoo)
+                training_data,
+                val_data,
+                data,
+                output_dir,
+                device,
+                input_size,
+                has_features,
+                g_zoo,
+            )
 
-            results = do_inductive_eval(model_name=get_full_model_name(),
-                                         output_dir=output_dir,
-                                         encoder=encoder,
-                                         valid_models=valid_models,
-                                         train_data=training_data,
-                                         val_data=val_data,
-                                         inference_data=inference_data,
-                                         lp_zoo=lp_zoo,
-                                         device=device,
-                                         test_edge_bundle=test_edge_bundle,
-                                         negative_samples=negative_samples,
-                                         wb=wandb)
+            results = do_inductive_eval(
+                model_name=get_full_model_name(),
+                output_dir=output_dir,
+                encoder=encoder,
+                valid_models=valid_models,
+                train_data=training_data,
+                val_data=val_data,
+                inference_data=inference_data,
+                lp_zoo=lp_zoo,
+                device=device,
+                test_edge_bundle=test_edge_bundle,
+                negative_samples=negative_samples,
+                wb=wandb,
+            )
         log.info('Finished training!')
 
         (total_time, _, _, times) = time_bundle

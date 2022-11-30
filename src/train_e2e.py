@@ -11,11 +11,18 @@ import wandb
 
 from lib.data import get_dataset
 from lib.models import EncoderZoo
-from lib.training import perform_e2e_transductive_training, perform_e2e_inductive_training
+from lib.training import (
+    perform_e2e_transductive_training,
+    perform_e2e_inductive_training,
+)
 from ogb.linkproppred import PygLinkPropPredDataset
 import lib.flags as FlagHelper
 
-from lib.utils import do_transductive_edge_split, do_node_inductive_edge_split, merge_multirun_results
+from lib.utils import (
+    do_transductive_edge_split,
+    do_node_inductive_edge_split,
+    merge_multirun_results,
+)
 
 ######
 # Flags
@@ -35,6 +42,7 @@ def get_full_model_name():
         model_prefix = FLAGS.model_name_prefix + '_'
     return f'{model_prefix}{FLAGS.graph_encoder_model.upper()}_{FLAGS.dataset}_lr{FLAGS.lr}_{FLAGS.link_pred_model}'
 
+
 ######
 # Main
 ######
@@ -51,7 +59,10 @@ def main(_):
     log.info(f'Found link pred validation models: {FLAGS.link_pred_model}')
     log.info(f'Using encoder model: {FLAGS.graph_encoder_model}')
 
-    wandb.init(project=f'sup-gnn', config={'model_name': get_full_model_name(), **FLAGS.flag_values_dict()})
+    wandb.init(
+        project=f'sup-gnn',
+        config={'model_name': get_full_model_name(), **FLAGS.flag_values_dict()},
+    )
 
     # create log directory
     OUTPUT_DIR = os.path.join(FLAGS.logdir, f'{get_full_model_name()}_{wandb.run.id}')
@@ -70,8 +81,14 @@ def main(_):
             data.edge_index = edge_split['train']['edge'].t()
         data.to(device)
     else:
-        training_data, val_data, inference_data, data, test_edge_bundle, negative_samples = do_node_inductive_edge_split(
-            dataset, split_seed=FLAGS.split_seed)
+        (
+            training_data,
+            val_data,
+            inference_data,
+            data,
+            test_edge_bundle,
+            negative_samples,
+        ) = do_node_inductive_edge_split(dataset, split_seed=FLAGS.split_seed)
 
     end_time = time.time_ns()
 
@@ -94,29 +111,33 @@ def main(_):
         log.info('=' * 30)
 
         if FLAGS.split_method == 'transductive':
-            _, _, results = perform_e2e_transductive_training(model_name=get_full_model_name(),
-                                                          data=data,
-                                                          edge_split=edge_split,
-                                                          output_dir=OUTPUT_DIR,
-                                                          representation_size=representation_size,
-                                                          device=device,
-                                                          input_size=input_size,
-                                                          has_features=True,
-                                                          g_zoo=g_zoo)
+            _, _, results = perform_e2e_transductive_training(
+                model_name=get_full_model_name(),
+                data=data,
+                edge_split=edge_split,
+                output_dir=OUTPUT_DIR,
+                representation_size=representation_size,
+                device=device,
+                input_size=input_size,
+                has_features=True,
+                g_zoo=g_zoo,
+            )
         else:
-            _, _, results = perform_e2e_inductive_training(model_name=get_full_model_name(),
-                                                       training_data=training_data,
-                                                       val_data=val_data,
-                                                       inference_data=inference_data,
-                                                       data=data,
-                                                       test_edge_bundle=test_edge_bundle,
-                                                       negative_samples=negative_samples,
-                                                       output_dir=OUTPUT_DIR,
-                                                       representation_size=representation_size,
-                                                       device=device,
-                                                       input_size=input_size,
-                                                       has_features=True,
-                                                       g_zoo=g_zoo)
+            _, _, results = perform_e2e_inductive_training(
+                model_name=get_full_model_name(),
+                training_data=training_data,
+                val_data=val_data,
+                inference_data=inference_data,
+                data=data,
+                test_edge_bundle=test_edge_bundle,
+                negative_samples=negative_samples,
+                output_dir=OUTPUT_DIR,
+                representation_size=representation_size,
+                device=device,
+                input_size=input_size,
+                has_features=True,
+                g_zoo=g_zoo,
+            )
         all_results.append(results)
 
     agg_results, to_log = merge_multirun_results(all_results)

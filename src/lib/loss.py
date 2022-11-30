@@ -27,9 +27,10 @@ def barlow_twins_loss(
 
     # Loss function
     off_diagonal_mask = ~torch.eye(feature_dim).bool()
-    loss = ((1 - c.diagonal()).pow(2).sum() + _lambda * c[off_diagonal_mask].pow(2).sum())
+    loss = (1 - c.diagonal()).pow(2).sum() + _lambda * c[off_diagonal_mask].pow(2).sum()
 
     return loss
+
 
 def cca_ssg_loss(z1, z2, cca_lambda, N):
     """Computes the CCA-SSG loss.

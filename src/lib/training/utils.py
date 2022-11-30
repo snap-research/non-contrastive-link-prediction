@@ -6,6 +6,7 @@ from os import path
 
 log = logging.getLogger(__name__)
 
+
 def get_time_bundle(times):
     """Given a list of times, returns a tuple containing the
     total time, standard deviation, mean time, and a numpy array of the times.
@@ -37,19 +38,29 @@ def write_results(model_name, output_dir, results):
 
         mn = model_name
         if contents['model_name'] != mn:
-            log.warn(f'[WARNING]: Model names do not match - {contents["model_name"]} vs {mn}')
+            log.warn(
+                f'[WARNING]: Model names do not match - {contents["model_name"]} vs {mn}'
+            )
 
         with open(results_path, 'w') as f:
-            json.dump({
-                'model_name': mn,
-                'results': contents['results'],
-            }, f, indent=4)
+            json.dump(
+                {
+                    'model_name': mn,
+                    'results': contents['results'],
+                },
+                f,
+                indent=4,
+            )
         log.info(f'Appended results to {results_path}')
     else:
         log.info('No results file found, writing to new one')
         with open(results_path, 'w') as f:
-            json.dump({
-                'model_name': model_name,
-                'results': results,
-            }, f, indent=4)
+            json.dump(
+                {
+                    'model_name': model_name,
+                    'results': results,
+                },
+                f,
+                indent=4,
+            )
         log.info(f'Wrote results to file at {results_path}')

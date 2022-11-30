@@ -25,17 +25,21 @@ def fit_logistic_regression(X, y, data_random_seed=1, repeat=1):
     accuracies = []
     for _ in range(repeat):
         # different random split after each repeat
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.8, random_state=rng)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.8, random_state=rng
+        )
 
         # grid search with one-vs-rest classifiers
         logreg = LogisticRegression(solver='liblinear', max_iter=200)
-        c = 2.0**np.arange(-10, 11)
+        c = 2.0 ** np.arange(-10, 11)
         cv = ShuffleSplit(n_splits=5, test_size=0.5)
-        clf = GridSearchCV(estimator=OneVsRestClassifier(logreg),
-                           param_grid=dict(estimator__C=c),
-                           n_jobs=5,
-                           cv=cv,
-                           verbose=0)
+        clf = GridSearchCV(
+            estimator=OneVsRestClassifier(logreg),
+            param_grid=dict(estimator__C=c),
+            n_jobs=5,
+            cv=cv,
+            verbose=0,
+        )
         clf.fit(X_train, y_train)
 
         y_pred = clf.predict_proba(X_test)

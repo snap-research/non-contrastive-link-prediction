@@ -24,7 +24,12 @@ from lib.models import GraceEncoder, GraceModel, LinkPredictorZoo
 from lib.training import get_time_bundle
 import lib.flags as FlagHelper
 
-from lib.utils import do_transductive_edge_split, is_small_dset, do_node_inductive_edge_split, merge_multirun_results
+from lib.utils import (
+    do_transductive_edge_split,
+    is_small_dset,
+    do_node_inductive_edge_split,
+    merge_multirun_results,
+)
 
 ######
 # Flags
@@ -37,22 +42,36 @@ FLAGS = flags.FLAGS
 FlagHelper.define_flags('GRACE')
 
 # GRACE-specific flags
-flags.DEFINE_enum('activation_type', 'prelu', ['prelu', 'relu'], 'Which activation type to use')
-flags.DEFINE_float('tau', 0., 'GRACE parameter')
+flags.DEFINE_enum(
+    'activation_type', 'prelu', ['prelu', 'relu'], 'Which activation type to use'
+)
+flags.DEFINE_float('tau', 0.0, 'GRACE parameter')
+
 
 def drop_feature(x, drop_prob):
     """GRACE feature dropping function.
     From: https://github.com/CRIPAC-DIG/GRACE/blob/51b44961b68b2f38c60f85cf83db13bed8fd0780/model.py#L120
     """
-    drop_mask = torch.empty((x.size(1),), dtype=torch.float32, device=x.device).uniform_(0, 1) < drop_prob
+    drop_mask = (
+        torch.empty((x.size(1),), dtype=torch.float32, device=x.device).uniform_(0, 1)
+        < drop_prob
+    )
     x = x.clone()
     x[:, drop_mask] = 0
 
     return x
 
 
-def train_grace(model: GraceModel, optimizer, x, edge_index, drop_edge_rate_1, drop_edge_rate_2,
-          drop_feature_rate_1, drop_feature_rate_2):
+def train_grace(
+    model: GraceModel,
+    optimizer,
+    x,
+    edge_index,
+    drop_edge_rate_1,
+    drop_edge_rate_2,
+    drop_feature_rate_1,
+    drop_feature_rate_2,
+):
     model.train()
     optimizer.zero_grad()
     edge_index_1 = dropout_adj(edge_index, p=drop_edge_rate_1)[0]
@@ -68,6 +87,7 @@ def train_grace(model: GraceModel, optimizer, x, edge_index, drop_edge_rate_1, d
 
     return loss.item()
 
+
 ######
 # Main
 ######
@@ -76,10 +96,18 @@ def main(_):
     if FLAGS.model_name_prefix:
         model_prefix = f'{FLAGS.model_name_prefix}_'
     model_name = f'{model_prefix}GRACE_{FLAGS.dataset}'
-    assert (FLAGS.drop_edge_p_1 != 0 and FLAGS.drop_edge_p_2 != 0 and FLAGS.drop_feat_p_1 != 0 and
-            FLAGS.drop_feat_p_2 != 0 and FLAGS.tau != 0)
+    assert (
+        FLAGS.drop_edge_p_1 != 0
+        and FLAGS.drop_edge_p_2 != 0
+        and FLAGS.drop_feat_p_1 != 0
+        and FLAGS.drop_feat_p_2 != 0
+        and FLAGS.tau != 0
+    )
 
-    wandb.init(project='ind-grace', config={'model_name': model_name, **FLAGS.flag_values_dict()})
+    wandb.init(
+        project='ind-grace',
+        config={'model_name': model_name, **FLAGS.flag_values_dict()},
+    )
     if wandb.run is None:
         raise ValueError('Failed to initialize wandb run!')
 
@@ -109,10 +137,18 @@ def main(_):
         if isinstance(dataset, PygLinkPropPredDataset):
             raise NotImplementedError()
 
-        training_data, val_data, inference_data, data, test_edge_bundle, negative_samples = do_node_inductive_edge_split(
+        (
+            training_data,
+            val_data,
+            inference_data,
+            data,
+            test_edge_bundle,
+            negative_samples,
+        ) = do_node_inductive_edge_split(
             dataset=dataset,
             split_seed=FLAGS.split_seed,
-            small_dataset=is_small_dset(FLAGS.dataset))  # type: ignore
+            small_dataset=is_small_dset(FLAGS.dataset),
+        )  # type: ignore
         training_data = training_data.to(device)
     else:  # transductive
         if isinstance(dataset, PygLinkPropPredDataset):
@@ -138,15 +174,17 @@ def main(_):
         lp_zoo = LinkPredictorZoo(FLAGS)
         valid_models = lp_zoo.filter_models(FLAGS.link_pred_model)
 
-        encoder = GraceEncoder(dataset.num_features,
-                          num_hidden,
-                          activation,
-                          base_model=base_model,
-                          k=num_layers).to(device)
+        encoder = GraceEncoder(
+            dataset.num_features,
+            num_hidden,
+            activation,
+            base_model=base_model,
+            k=num_layers,
+        ).to(device)
         model = GraceModel(encoder, num_hidden, num_proj_hidden, tau).to(device)
-        optimizer = torch.optim.Adam(model.parameters(),
-                                     lr=learning_rate,
-                                     weight_decay=weight_decay)
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=learning_rate, weight_decay=weight_decay
+        )
 
         times = []
         for epoch in range(1, num_epochs + 1):
@@ -158,14 +196,16 @@ def main(_):
                 train_x = data.x
                 train_ei = data.edge_index
 
-            loss = train_grace(model=model,
-                         optimizer=optimizer,
-                         x=train_x,
-                         edge_index=train_ei,
-                         drop_edge_rate_1=drop_edge_rate_1,
-                         drop_edge_rate_2=drop_edge_rate_2,
-                         drop_feature_rate_1=drop_feature_rate_1,
-                         drop_feature_rate_2=drop_feature_rate_2)
+            loss = train_grace(
+                model=model,
+                optimizer=optimizer,
+                x=train_x,
+                edge_index=train_ei,
+                drop_edge_rate_1=drop_edge_rate_1,
+                drop_edge_rate_2=drop_edge_rate_2,
+                drop_feature_rate_1=drop_feature_rate_1,
+                drop_feature_rate_2=drop_feature_rate_2,
+            )
             elapsed = time.time_ns() - st_time
             times.append(elapsed)
 
@@ -183,29 +223,33 @@ def main(_):
 
         log.info("=== Final Evaluation ===")
         if FLAGS.split_method == 'inductive':
-            results = do_inductive_eval(model_name=model_name,
-                                        output_dir=OUTPUT_DIR,
-                                        encoder=encoder,
-                                        valid_models=valid_models,
-                                        train_data=training_data,
-                                        val_data=val_data,
-                                        inference_data=inference_data,
-                                        lp_zoo=lp_zoo,
-                                        device=device,
-                                        test_edge_bundle=test_edge_bundle,
-                                        negative_samples=negative_samples,
-                                        wb=wandb)
-        else: # transductive
+            results = do_inductive_eval(
+                model_name=model_name,
+                output_dir=OUTPUT_DIR,
+                encoder=encoder,
+                valid_models=valid_models,
+                train_data=training_data,
+                val_data=val_data,
+                inference_data=inference_data,
+                lp_zoo=lp_zoo,
+                device=device,
+                test_edge_bundle=test_edge_bundle,
+                negative_samples=negative_samples,
+                wb=wandb,
+            )
+        else:  # transductive
             representations = compute_representations_only(encoder, dataset, device)
             embeddings = torch.nn.Embedding.from_pretrained(representations)
-            results, _ = do_all_eval(model_name,
-                                                      output_dir=OUTPUT_DIR,
-                                                      valid_models=valid_models,
-                                                      dataset=dataset,
-                                                      edge_split=edge_split,
-                                                      embeddings=embeddings,
-                                                      lp_zoo=lp_zoo,
-                                                      wb=wandb)
+            results, _ = do_all_eval(
+                model_name,
+                output_dir=OUTPUT_DIR,
+                valid_models=valid_models,
+                dataset=dataset,
+                edge_split=edge_split,
+                embeddings=embeddings,
+                lp_zoo=lp_zoo,
+                wb=wandb,
+            )
         all_results.append(results)
 
     agg_results, to_log = merge_multirun_results(all_results)

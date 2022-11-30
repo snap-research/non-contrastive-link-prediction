@@ -30,7 +30,9 @@ class TripletBgrl(torch.nn.Module):
 
     def trainable_parameters(self):
         r"""Returns the parameters that will be updated via an optimizer."""
-        return list(self.online_encoder.parameters()) + list(self.predictor.parameters())
+        return list(self.online_encoder.parameters()) + list(
+            self.predictor.parameters()
+        )
 
     @torch.no_grad()
     def update_target_network(self, mm):
@@ -39,9 +41,13 @@ class TripletBgrl(torch.nn.Module):
         Args:
             mm (float): Momentum used in moving average update.
         """
-        assert 0.0 <= mm <= 1.0, "Momentum needs to be between 0.0 and 1.0, got %.5f" % mm
-        for param_q, param_k in zip(self.online_encoder.parameters(), self.target_encoder.parameters()):
-            param_k.data.mul_(mm).add_(param_q.data, alpha=1. - mm)
+        assert 0.0 <= mm <= 1.0, (
+            "Momentum needs to be between 0.0 and 1.0, got %.5f" % mm
+        )
+        for param_q, param_k in zip(
+            self.online_encoder.parameters(), self.target_encoder.parameters()
+        ):
+            param_k.data.mul_(mm).add_(param_q.data, alpha=1.0 - mm)
 
     @torch.no_grad()
     def forward_target(self, target_x):

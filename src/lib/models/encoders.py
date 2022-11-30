@@ -4,21 +4,30 @@ from torch_geometric.nn import BatchNorm, GCNConv, LayerNorm, Sequential
 
 
 class EncoderZoo:
-    """Returns an encoder of the specified type.
-    """
+    """Returns an encoder of the specified type."""
 
     def __init__(self, flags):
-        self.models = { 'gcn': GCN }
+        self.models = {'gcn': GCN}
         self.flags = flags
 
-    def _init_model(self, model_class, input_size: int, use_feat: bool, n_nodes: int, batched: bool, n_feats: int):
+    def _init_model(
+        self,
+        model_class,
+        input_size: int,
+        use_feat: bool,
+        n_nodes: int,
+        batched: bool,
+        n_feats: int,
+    ):
         flags = self.flags
         if model_class == GCN:
-            return GCN([input_size] + flags.graph_encoder_layer,
-                       batchnorm=True,
-                       use_feat=use_feat,
-                       n_nodes=n_nodes,
-                       batched=batched)
+            return GCN(
+                [input_size] + flags.graph_encoder_layer,
+                batchnorm=True,
+                use_feat=use_feat,
+                n_nodes=n_nodes,
+                batched=batched,
+            )
 
     # Function to test if the model exists
     # Raise an error if not
@@ -26,20 +35,24 @@ class EncoderZoo:
         if model_name not in self.models:
             raise ValueError(f'Unknown predictor model "{model_name}"')
 
-    def get_model(self,
-                  model_name: str,
-                  input_size: int,
-                  use_feat: bool,
-                  n_nodes: int,
-                  n_feats: int,
-                  batched: bool = False):
+    def get_model(
+        self,
+        model_name: str,
+        input_size: int,
+        use_feat: bool,
+        n_nodes: int,
+        n_feats: int,
+        batched: bool = False,
+    ):
         self.check_model(model_name)
-        return self._init_model(self.models[model_name],
-                                input_size,
-                                use_feat,
-                                n_nodes,
-                                batched=batched,
-                                n_feats=n_feats)
+        return self._init_model(
+            self.models[model_name],
+            input_size,
+            use_feat,
+            n_nodes,
+            batched=batched,
+            n_feats=n_feats,
+        )
 
 
 class GCN(nn.Module):
@@ -47,15 +60,17 @@ class GCN(nn.Module):
     This is based off of the official BGRL encoder implementation.
     """
 
-    def __init__(self,
-                 layer_sizes,
-                 batchnorm=False,
-                 batchnorm_mm=0.99,
-                 layernorm=False,
-                 weight_standardization=False,
-                 use_feat=True,
-                 n_nodes=0,
-                 batched=False):
+    def __init__(
+        self,
+        layer_sizes,
+        batchnorm=False,
+        batchnorm_mm=0.99,
+        layernorm=False,
+        weight_standardization=False,
+        use_feat=True,
+        n_nodes=0,
+        batched=False,
+    ):
         super().__init__()
 
         assert batchnorm != layernorm
@@ -76,7 +91,9 @@ class GCN(nn.Module):
                 if batchnorm:
                     batchnorms.append(BatchNorm(out_dim, momentum=batchnorm_mm))
             else:
-                layers.append((GCNConv(in_dim, out_dim), 'x, edge_index -> x'),)
+                layers.append(
+                    (GCNConv(in_dim, out_dim), 'x, edge_index -> x'),
+                )
 
                 if batchnorm:
                     layers.append(BatchNorm(out_dim, momentum=batchnorm_mm))

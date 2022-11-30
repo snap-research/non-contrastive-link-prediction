@@ -18,9 +18,19 @@ from lib.models.decoders import LinkPredictorZoo
 from lib.models import EncoderZoo
 from lib.eval import do_all_eval, do_inductive_eval
 from ogb.linkproppred import PygLinkPropPredDataset
-from lib.training import perform_bgrl_training, perform_cca_ssg_training, perform_gbt_training, perform_triplet_training
+from lib.training import (
+    perform_bgrl_training,
+    perform_cca_ssg_training,
+    perform_gbt_training,
+    perform_triplet_training,
+)
 from lib.transforms import VALID_NEG_TRANSFORMS
-from lib.utils import do_node_inductive_edge_split, do_transductive_edge_split, is_small_dset, merge_multirun_results
+from lib.utils import (
+    do_node_inductive_edge_split,
+    do_transductive_edge_split,
+    is_small_dset,
+    merge_multirun_results,
+)
 import lib.flags as FlagHelper
 
 ######
@@ -33,38 +43,71 @@ FLAGS = flags.FLAGS
 
 FlagHelper.define_flags('NCL')
 # Dataset.
-flags.DEFINE_enum('base_model', 'bgrl', ['gbt', 'bgrl', 'triplet', 'cca'], 'Which base model to use.')
+flags.DEFINE_enum(
+    'base_model', 'bgrl', ['gbt', 'bgrl', 'triplet', 'cca'], 'Which base model to use.'
+)
 flags.DEFINE_float('mm', 0.99, 'The momentum for moving average.')
 flags.DEFINE_integer('predictor_hidden_size', 512, 'Hidden size of projector.')
 
-flags.DEFINE_enum('negative_transforms', 'randomize-feats', list(VALID_NEG_TRANSFORMS.keys()),
-                  'Which negative graph transforms to use (triplet formulation only).')
+flags.DEFINE_enum(
+    'negative_transforms',
+    'randomize-feats',
+    list(VALID_NEG_TRANSFORMS.keys()),
+    'Which negative graph transforms to use (triplet formulation only).',
+)
 flags.DEFINE_bool('eval_only', False, 'Only evaluate the model.')
 flags.DEFINE_multi_enum(
-    'eval_only_pred_model', [], ['lr', 'mlp', 'cosine', 'seal', 'prod_lr'],
-    'Which link prediction models to use (overwrites link_pred_model if eval_only is True and this is set)')
+    'eval_only_pred_model',
+    [],
+    ['lr', 'mlp', 'cosine', 'seal', 'prod_lr'],
+    'Which link prediction models to use (overwrites link_pred_model if eval_only is True and this is set)',
+)
 
 flags.DEFINE_bool('batch_graphs', False, 'Whether or not to perform batching on graphs')
-flags.DEFINE_integer('graph_batch_size', 1024, 'Number of subgraphs to use per minibatch')
-flags.DEFINE_integer('graph_eval_batch_size', 128, 'Number of subgraphs to use per minibatch')
+flags.DEFINE_integer(
+    'graph_batch_size', 1024, 'Number of subgraphs to use per minibatch'
+)
+flags.DEFINE_integer(
+    'graph_eval_batch_size', 128, 'Number of subgraphs to use per minibatch'
+)
 flags.DEFINE_integer('n_workers', 0, 'Number of workers to use')
 
 flags.DEFINE_integer('lr_warmup_epochs', 1000, 'Warmup period for learning rate.')
-flags.DEFINE_bool('training_early_stop', False, 'Whether or not to perform early stopping on the training loss')
-flags.DEFINE_integer('training_early_stop_patience', 50, 'Training early stopping patience')
+flags.DEFINE_bool(
+    'training_early_stop',
+    False,
+    'Whether or not to perform early stopping on the training loss',
+)
+flags.DEFINE_integer(
+    'training_early_stop_patience', 50, 'Training early stopping patience'
+)
 
 # Corruption flags
-flags.DEFINE_float('add_edge_ratio_1', 0.,
-                   'Ratio of negative edges to sample (compared to existing positive edges) for online net.')
-flags.DEFINE_float('add_edge_ratio_2', 0.,
-                   'Ratio of negative edges to sample (compared to existing positive edges) for target net.')
-flags.DEFINE_float('neg_lambda', 0.5, 'Weight to use for the negative triplet head. Between 0 and 1')
+flags.DEFINE_float(
+    'add_edge_ratio_1',
+    0.0,
+    'Ratio of negative edges to sample (compared to existing positive edges) for online net.',
+)
+flags.DEFINE_float(
+    'add_edge_ratio_2',
+    0.0,
+    'Ratio of negative edges to sample (compared to existing positive edges) for target net.',
+)
+flags.DEFINE_float(
+    'neg_lambda', 0.5, 'Weight to use for the negative triplet head. Between 0 and 1'
+)
 
 # Link prediction model-specific flags
-flags.DEFINE_bool('save_extra', False, 'Whether or not to save extra plotting/debugging info')
-flags.DEFINE_bool('dataset_fixed', True, 'Whether or not a message-passing vs normal edges bug was fixed')
+flags.DEFINE_bool(
+    'save_extra', False, 'Whether or not to save extra plotting/debugging info'
+)
+flags.DEFINE_bool(
+    'dataset_fixed',
+    True,
+    'Whether or not a message-passing vs normal edges bug was fixed',
+)
 
-flags.DEFINE_float('cca_lambda', 0., 'Lambda for CCA-SSG')
+flags.DEFINE_float('cca_lambda', 0.0, 'Lambda for CCA-SSG')
 
 
 def get_full_model_name():
@@ -78,7 +121,10 @@ def get_full_model_name():
     elif FLAGS.base_model == 'triplet':
         return f'{model_prefix}TBGRL_{FLAGS.dataset}_lr{FLAGS.lr}_mm{FLAGS.mm}_{edge_prob_str}'
 
-    return f'{model_prefix}BGRL_{FLAGS.dataset}_lr{FLAGS.lr}_mm{FLAGS.mm}_{edge_prob_str}'
+    return (
+        f'{model_prefix}BGRL_{FLAGS.dataset}_lr{FLAGS.lr}_mm{FLAGS.mm}_{edge_prob_str}'
+    )
+
 
 ######
 # Main
@@ -100,16 +146,19 @@ def main(_):
     if FLAGS.trivial_neg_sampling == 'auto':
         if FLAGS.dataset == 'ogbl-collab':
             FLAGS.trivial_neg_sampling = 'true'
-            log.info(f'Setting trivial_neg_sampling to true since auto is set and the dataset is large')
+            log.info(
+                f'Setting trivial_neg_sampling to true since auto is set and the dataset is large'
+            )
         else:
             FLAGS.trivial_neg_sampling = 'false'
-            log.info(f'Setting trivial_neg_sampling to true since auto is set and the dataset is small')
+            log.info(
+                f'Setting trivial_neg_sampling to true since auto is set and the dataset is small'
+            )
 
-    wandb.init(project=f'fixed-{FLAGS.base_model}-prod',
-               config={
-                   'model_name': get_full_model_name(),
-                   **FLAGS.flag_values_dict()
-               })
+    wandb.init(
+        project=f'fixed-{FLAGS.base_model}-prod',
+        config={'model_name': get_full_model_name(), **FLAGS.flag_values_dict()},
+    )
 
     # use CUDA_VISIBLE_DEVICES to select gpu
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -130,7 +179,10 @@ def main(_):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # add config flagfile
-    with open(path.join(OUTPUT_DIR, 'eval_config.cfg' if FLAGS.eval_only else 'config.cfg'), "w") as file:
+    with open(
+        path.join(OUTPUT_DIR, 'eval_config.cfg' if FLAGS.eval_only else 'config.cfg'),
+        "w",
+    ) as file:
         file.write(FLAGS.flags_into_string())  # save config file
 
     # save config in JSON
@@ -144,7 +196,9 @@ def main(_):
 
     small_dataset = is_small_dset(FLAGS.dataset)
     if small_dataset:
-        log.info('Small dataset detected, will use small dataset settings for inductive split.')
+        log.info(
+            'Small dataset detected, will use small dataset settings for inductive split.'
+        )
 
     if isinstance(dataset, PygLinkPropPredDataset):
         raise NotImplementedError()
@@ -154,9 +208,17 @@ def main(_):
         data.edge_index = edge_split['train']['edge'].t()  # type: ignore
         data.to(device)
         training_data = data
-    else: # inductive
-        training_data, val_data, inference_data, data, test_edge_bundle, negative_samples = do_node_inductive_edge_split(
-            dataset=dataset, split_seed=FLAGS.split_seed, small_dataset=small_dataset)  # type: ignore
+    else:  # inductive
+        (
+            training_data,
+            val_data,
+            inference_data,
+            data,
+            test_edge_bundle,
+            negative_samples,
+        ) = do_node_inductive_edge_split(
+            dataset=dataset, split_seed=FLAGS.split_seed, small_dataset=small_dataset
+        )  # type: ignore
 
     end_time = time.time_ns()
     log.info(f'Took {(end_time - st_time) / 1e9}s to load data')
@@ -187,41 +249,48 @@ def main(_):
         log.info('=' * 30)
 
         if FLAGS.base_model == 'bgrl':
-            encoder, representations, time_bundle = perform_bgrl_training(data=training_data,
-                                                                          output_dir=OUTPUT_DIR,
-                                                                          representation_size=representation_size,
-                                                                          device=device,
-                                                                          input_size=input_size,
-                                                                          has_features=has_features,
-                                                                          g_zoo=g_zoo,
-                                                                          train_cb=train_cb,
-                                                                          extra_return=FLAGS.save_extra)
+            encoder, representations, time_bundle = perform_bgrl_training(
+                data=training_data,
+                output_dir=OUTPUT_DIR,
+                representation_size=representation_size,
+                device=device,
+                input_size=input_size,
+                has_features=has_features,
+                g_zoo=g_zoo,
+                train_cb=train_cb,
+                extra_return=FLAGS.save_extra,
+            )
             if FLAGS.save_extra:
                 predictor = representations
             log.info('Finished training!')
         elif FLAGS.base_model == 'cca':
             time_bundle = None
-            encoder, representations, time_bundle = perform_cca_ssg_training(data=training_data,
-                                                                             output_dir=OUTPUT_DIR,
-                                                                             device=device,
-                                                                             input_size=input_size,
-                                                                             has_features=has_features,
-                                                                             g_zoo=g_zoo)
+            encoder, representations, time_bundle = perform_cca_ssg_training(
+                data=training_data,
+                output_dir=OUTPUT_DIR,
+                device=device,
+                input_size=input_size,
+                has_features=has_features,
+                g_zoo=g_zoo,
+            )
             log.info('Finished training!')
         elif FLAGS.base_model == 'gbt':
-            encoder, representations, time_bundle = perform_gbt_training(training_data, OUTPUT_DIR, device,
-                                                                         input_size, has_features, g_zoo)
+            encoder, representations, time_bundle = perform_gbt_training(
+                training_data, OUTPUT_DIR, device, input_size, has_features, g_zoo
+            )
             # del encoder
             log.info('Finished training')
         elif FLAGS.base_model == 'triplet':
-            encoder, representations, time_bundle = perform_triplet_training(data=training_data.to(device),
-                                                                             output_dir=OUTPUT_DIR,
-                                                                             representation_size=representation_size,
-                                                                             device=device,
-                                                                             input_size=input_size,
-                                                                             has_features=has_features,
-                                                                             g_zoo=g_zoo,
-                                                                             train_cb=train_cb)
+            encoder, representations, time_bundle = perform_triplet_training(
+                data=training_data.to(device),
+                output_dir=OUTPUT_DIR,
+                representation_size=representation_size,
+                device=device,
+                input_size=input_size,
+                has_features=has_features,
+                g_zoo=g_zoo,
+                train_cb=train_cb,
+            )
         else:
             raise NotImplementedError()
 
@@ -232,28 +301,32 @@ def main(_):
 
         if FLAGS.split_method == 'transductive':
             embeddings = nn.Embedding.from_pretrained(representations, freeze=True)
-            results, _ = do_all_eval(get_full_model_name(),
-                                                output_dir=OUTPUT_DIR,
-                                                valid_models=valid_models,
-                                                dataset=dataset,
-                                                edge_split=edge_split,
-                                                embeddings=embeddings,
-                                                lp_zoo=lp_zoo,
-                                                wb=wandb)
-        else: # inductive
-            results = do_inductive_eval(model_name=get_full_model_name(),
-                                        output_dir=OUTPUT_DIR,
-                                        encoder=encoder,
-                                        valid_models=valid_models,
-                                        train_data=training_data,
-                                        val_data=val_data,
-                                        inference_data=inference_data,
-                                        lp_zoo=lp_zoo,
-                                        device=device,
-                                        test_edge_bundle=test_edge_bundle,
-                                        negative_samples=negative_samples,
-                                        wb=wandb,
-                                        return_extra=FLAGS.save_extra)
+            results, _ = do_all_eval(
+                get_full_model_name(),
+                output_dir=OUTPUT_DIR,
+                valid_models=valid_models,
+                dataset=dataset,
+                edge_split=edge_split,
+                embeddings=embeddings,
+                lp_zoo=lp_zoo,
+                wb=wandb,
+            )
+        else:  # inductive
+            results = do_inductive_eval(
+                model_name=get_full_model_name(),
+                output_dir=OUTPUT_DIR,
+                encoder=encoder,
+                valid_models=valid_models,
+                train_data=training_data,
+                val_data=val_data,
+                inference_data=inference_data,
+                lp_zoo=lp_zoo,
+                device=device,
+                test_edge_bundle=test_edge_bundle,
+                negative_samples=negative_samples,
+                wb=wandb,
+                return_extra=FLAGS.save_extra,
+            )
 
         if FLAGS.save_extra:
             nn_model, results = results
@@ -264,10 +337,21 @@ def main(_):
             {
                 'nn_model': nn_model.state_dict(),
                 'predictor': predictor.state_dict(),
-                'encoder': encoder.state_dict()
-            }, path.join(OUTPUT_DIR, 'extra_data.pt'))
-        torch.save((training_data, val_data, inference_data, data, test_edge_bundle, negative_samples),
-                   path.join(OUTPUT_DIR, 'data_split.pt'))
+                'encoder': encoder.state_dict(),
+            },
+            path.join(OUTPUT_DIR, 'extra_data.pt'),
+        )
+        torch.save(
+            (
+                training_data,
+                val_data,
+                inference_data,
+                data,
+                test_edge_bundle,
+                negative_samples,
+            ),
+            path.join(OUTPUT_DIR, 'data_split.pt'),
+        )
     agg_results, to_log = merge_multirun_results(all_results)
     wandb.log(to_log)
 

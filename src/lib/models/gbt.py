@@ -17,4 +17,3 @@ class GraphBarlowTwins(torch.nn.Module):
         rep_a = self.encoder(online_x)
         rep_b = self.encoder(target_x)
         return rep_a, rep_b
-

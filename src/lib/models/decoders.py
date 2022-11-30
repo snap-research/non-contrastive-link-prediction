@@ -18,10 +18,17 @@ class LinkPredictorZoo:
         flags = self.flags
         if model_class == MLPConcatDecoder:
             if flags.adjust_layer_sizes:
-                return MLPConcatDecoder(embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size * 2)
-            return MLPConcatDecoder(embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size)
+                return MLPConcatDecoder(
+                    embedding_size=embedding_size,
+                    hidden_size=flags.link_mlp_hidden_size * 2,
+                )
+            return MLPConcatDecoder(
+                embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size
+            )
         elif model_class == MLPProdDecoder:
-            return MLPProdDecoder(embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size)
+            return MLPProdDecoder(
+                embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size
+            )
 
     def filter_models(self, models: List[str]):
         return [model for model in models if model in self.models]
@@ -41,12 +48,15 @@ class LinkPredictorZoo:
 
 
 class MLPConcatDecoder(torch.nn.Module):
-    """Concatentation-based MLP link predictor.
-    """
+    """Concatentation-based MLP link predictor."""
 
     def __init__(self, embedding_size, hidden_size):
         super().__init__()
-        self.net = nn.Sequential(nn.Linear(embedding_size * 2, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1))
+        self.net = nn.Sequential(
+            nn.Linear(embedding_size * 2, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, 1),
+        )
 
     def forward(self, x):
         return self.net(x)
@@ -56,17 +66,18 @@ class MLPConcatDecoder(torch.nn.Module):
 
 
 class MLPProdDecoder(torch.nn.Module):
-    """Hadamard-product-based MLP link predictor.
-    """
+    """Hadamard-product-based MLP link predictor."""
 
     def __init__(self, embedding_size, hidden_size):
         super().__init__()
         self.embedding_size = embedding_size
         # self.embeddings = embeddings
-        self.net = nn.Sequential(nn.Linear(embedding_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1))
+        self.net = nn.Sequential(
+            nn.Linear(embedding_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1)
+        )
 
     def forward(self, x):
-        left, right = x[:, :self.embedding_size], x[:, self.embedding_size:]
+        left, right = x[:, : self.embedding_size], x[:, self.embedding_size :]
         return self.net(left * right)
 
     def predict(self, x):

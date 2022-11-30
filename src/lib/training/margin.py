@@ -20,6 +20,7 @@ FLAGS = flags.FLAGS
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
+
 def edge2lookup(edges, n_nodes, n_samples):
     """Utility function for margin loss negative sampling.
     Takes in the negative edges, the number of nodes, and the number of desired
@@ -35,11 +36,14 @@ def edge2lookup(edges, n_nodes, n_samples):
                 out[l, k] = r
                 break
 
-    is_nan = (out == -1)
+    is_nan = out == -1
     to_gen = is_nan.sum()
     # fill the ones we couldn't find negative edges for
-    out[is_nan] = torch.randint(0, n_nodes, (to_gen,), dtype=torch.long, device=out.device)
+    out[is_nan] = torch.randint(
+        0, n_nodes, (to_gen,), dtype=torch.long, device=out.device
+    )
     return out
+
 
 def compute_margin_loss(device, n_nodes, edge_index, row, col, model_out):
     """Performs negative sampling and computes the margin loss on the graph represented by
@@ -65,7 +69,9 @@ def compute_margin_loss(device, n_nodes, edge_index, row, col, model_out):
     pos_dists = None
     node_vec = torch.arange(0, n_nodes).to(device)
     for _ in range(FLAGS.pos_samples):
-        pos_batch = random_walk(row, col, node_vec, walk_length=1, coalesced=False)[:, 1]
+        pos_batch = random_walk(row, col, node_vec, walk_length=1, coalesced=False)[
+            :, 1
+        ]
         pos_embed = model_out[pos_batch]
         new_dists = F.logsigmoid(F.cosine_similarity(model_out, pos_embed))
         if pos_dists is None:
@@ -82,36 +88,45 @@ def compute_margin_loss(device, n_nodes, edge_index, row, col, model_out):
     return torch.mean(torch.clamp(neg_dists - pos_dists + FLAGS.margin, min=0))
 
 
-def perform_transductive_margin_training(data, edge_split, output_dir, device, input_size: int, has_features: bool,
-                                g_zoo):
+def perform_transductive_margin_training(
+    data, edge_split, output_dir, device, input_size: int, has_features: bool, g_zoo
+):
     """Trains ML-GCN on the transductive data and returns the trained model.
     Also returns timing information.
     """
     valid_edge = edge_split['valid']['edge'].T.to(device)
 
-    model = g_zoo.get_model(FLAGS.graph_encoder_model,
-                            input_size,
-                            has_features,
-                            data.num_nodes,
-                            batched=False,
-                            n_feats=data.x.size(1)).to(device)
+    model = g_zoo.get_model(
+        FLAGS.graph_encoder_model,
+        input_size,
+        has_features,
+        data.num_nodes,
+        batched=False,
+        n_feats=data.x.size(1),
+    ).to(device)
     n_nodes = data.num_nodes
 
-    adj = SparseTensor(row=data.edge_index[0],
-                       col=data.edge_index[1],
-                       value=None,
-                       sparse_sizes=(data.num_nodes, data.num_nodes))
+    adj = SparseTensor(
+        row=data.edge_index[0],
+        col=data.edge_index[1],
+        value=None,
+        sparse_sizes=(data.num_nodes, data.num_nodes),
+    )
     adj_t = adj.t()
     row, col, _ = adj_t.coo()
 
-    val_adj = SparseTensor(row=valid_edge[0],
-                           col=valid_edge[1],
-                           value=None,
-                           sparse_sizes=(data.num_nodes, data.num_nodes))
+    val_adj = SparseTensor(
+        row=valid_edge[0],
+        col=valid_edge[1],
+        value=None,
+        sparse_sizes=(data.num_nodes, data.num_nodes),
+    )
     val_adj_t = val_adj.t()
     val_row, val_col, _ = val_adj_t.coo()
 
-    optimizer = AdamW(list(model.parameters()), lr=FLAGS.lr, weight_decay=FLAGS.weight_decay)
+    optimizer = AdamW(
+        list(model.parameters()), lr=FLAGS.lr, weight_decay=FLAGS.weight_decay
+    )
     lr_scheduler = CosineDecayScheduler(FLAGS.lr, FLAGS.lr_warmup_epochs, FLAGS.epochs)
 
     #####
@@ -131,12 +146,16 @@ def perform_transductive_margin_training(data, edge_split, output_dir, device, i
             data.x = model.get_node_feats().weight.data.clone().detach()
 
         model_out = model(data)
-        loss = compute_margin_loss(device, n_nodes, data.edge_index, row, col, model_out)
+        loss = compute_margin_loss(
+            device, n_nodes, data.edge_index, row, col, model_out
+        )
 
         loss.backward()
         optimizer.step()
 
-        wandb.log({'curr_lr': lr, 'train_loss': loss, 'step': step, 'epoch': step}, step=step)
+        wandb.log(
+            {'curr_lr': lr, 'train_loss': loss, 'step': step, 'epoch': step}, step=step
+        )
         return loss
 
     @torch.no_grad()
@@ -144,7 +163,9 @@ def perform_transductive_margin_training(data, edge_split, output_dir, device, i
         model.eval()
         model_out = model.split_forward(data.x, valid_edge)
 
-        val_loss = compute_margin_loss(device, n_nodes, valid_edge, val_row, val_col, model_out)
+        val_loss = compute_margin_loss(
+            device, n_nodes, valid_edge, val_row, val_col, model_out
+        )
         wandb.log({'margin_val_loss': val_loss, 'step': step, 'epoch': step}, step=step)
 
         return val_loss
@@ -171,23 +192,39 @@ def perform_transductive_margin_training(data, edge_split, output_dir, device, i
             lowest_loss = val_loss
             last_epoch = epoch
         if epoch > WARMUP_PERIOD and epoch - last_epoch > PATIENCE:  # type: ignore
-            log.info(f'Stopping early, no improvement in training loss for {PATIENCE} epochs')
+            log.info(
+                f'Stopping early, no improvement in training loss for {PATIENCE} epochs'
+            )
             break
 
     time_bundle = get_time_bundle(times)
 
     # save encoder weights
-    torch.save({'model': model.state_dict()}, os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}.pt'))
+    torch.save(
+        {'model': model.state_dict()},
+        os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}.pt'),
+    )
     model = model.eval()
-    representations = compute_data_representations_only(model, data, device, has_features=has_features)
-    torch.save(representations, os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}-repr.pt'))
+    representations = compute_data_representations_only(
+        model, data, device, has_features=has_features
+    )
+    torch.save(
+        representations, os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}-repr.pt')
+    )
 
     return model, representations, time_bundle
 
 
-
-def perform_inductive_margin_training(train_data, val_data, data,
-                                      output_dir, device, input_size: int, has_features: bool, g_zoo):
+def perform_inductive_margin_training(
+    train_data,
+    val_data,
+    data,
+    output_dir,
+    device,
+    input_size: int,
+    has_features: bool,
+    g_zoo,
+):
     """Trains the ML-GCN on the inductive data and returns the trained model.
     Also returns timing information.
     """
@@ -198,29 +235,37 @@ def perform_inductive_margin_training(train_data, val_data, data,
     valid_edge = val_data.edge_index.to(device)
 
     train_nodes = train_data.num_nodes
-    model = g_zoo.get_model(FLAGS.graph_encoder_model,
-                            input_size,
-                            has_features,
-                            train_nodes,
-                            batched=False,
-                            n_feats=data.x.size(1)).to(device)
+    model = g_zoo.get_model(
+        FLAGS.graph_encoder_model,
+        input_size,
+        has_features,
+        train_nodes,
+        batched=False,
+        n_feats=data.x.size(1),
+    ).to(device)
 
-    adj = SparseTensor(row=training_edge[0],
-                       col=training_edge[1],
-                       value=None,
-                       sparse_sizes=(train_data.num_nodes, train_data.num_nodes))
+    adj = SparseTensor(
+        row=training_edge[0],
+        col=training_edge[1],
+        value=None,
+        sparse_sizes=(train_data.num_nodes, train_data.num_nodes),
+    )
     adj_t = adj.t()
     row, col, _ = adj_t.coo()
 
-    val_adj = SparseTensor(row=valid_edge[0],
-                           col=valid_edge[1],
-                           value=None,
-                           sparse_sizes=(train_data.num_nodes, train_data.num_nodes))
+    val_adj = SparseTensor(
+        row=valid_edge[0],
+        col=valid_edge[1],
+        value=None,
+        sparse_sizes=(train_data.num_nodes, train_data.num_nodes),
+    )
     val_adj_t = val_adj.t()
     val_row, val_col, _ = val_adj_t.coo()
 
     # optimizer
-    optimizer = AdamW(list(model.parameters()), lr=FLAGS.lr, weight_decay=FLAGS.weight_decay)
+    optimizer = AdamW(
+        list(model.parameters()), lr=FLAGS.lr, weight_decay=FLAGS.weight_decay
+    )
 
     # scheduler
     lr_scheduler = CosineDecayScheduler(FLAGS.lr, FLAGS.lr_warmup_epochs, FLAGS.epochs)
@@ -242,13 +287,17 @@ def perform_inductive_margin_training(train_data, val_data, data,
 
         model_out = model(train_data)
         sample_size = train_nodes * 2
-        loss = compute_margin_loss(device, train_nodes, train_data.edge_index, row, col, model_out)
+        loss = compute_margin_loss(
+            device, train_nodes, train_data.edge_index, row, col, model_out
+        )
 
         loss.backward()
         optimizer.step()
 
         # log scalars
-        wandb.log({'curr_lr': lr, 'train_loss': loss, 'step': step, 'epoch': step}, step=step)
+        wandb.log(
+            {'curr_lr': lr, 'train_loss': loss, 'step': step, 'epoch': step}, step=step
+        )
 
         return loss
 
@@ -257,7 +306,9 @@ def perform_inductive_margin_training(train_data, val_data, data,
         model.eval()
         model_out = model.split_forward(train_data.x, valid_edge)
 
-        val_loss = compute_margin_loss(device, train_nodes, valid_edge, val_row, val_col, model_out)
+        val_loss = compute_margin_loss(
+            device, train_nodes, valid_edge, val_row, val_col, model_out
+        )
         wandb.log({'margin_val_loss': val_loss, 'step': step, 'epoch': step}, step=step)
 
         return val_loss
@@ -284,15 +335,24 @@ def perform_inductive_margin_training(train_data, val_data, data,
             lowest_loss = val_loss
             last_epoch = epoch
         if epoch > WARMUP_PERIOD and epoch - last_epoch > PATIENCE:  # type: ignore
-            log.info(f'Stopping early, no improvement in training loss for {PATIENCE} epochs')
+            log.info(
+                f'Stopping early, no improvement in training loss for {PATIENCE} epochs'
+            )
             break
 
     time_bundle = get_time_bundle(times)
 
     # save encoder weights
-    torch.save({'model': model.state_dict()}, os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}.pt'))
+    torch.save(
+        {'model': model.state_dict()},
+        os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}.pt'),
+    )
     model = model.eval()
-    representations = compute_data_representations_only(model, train_data, device, has_features=has_features)
-    torch.save(representations, os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}-repr.pt'))
+    representations = compute_data_representations_only(
+        model, train_data, device, has_features=has_features
+    )
+    torch.save(
+        representations, os.path.join(output_dir, f'gcn-ml-{FLAGS.dataset}-repr.pt')
+    )
 
     return model, representations, time_bundle

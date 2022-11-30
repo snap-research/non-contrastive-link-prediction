@@ -2,6 +2,7 @@ import copy
 import torch
 from torch import nn
 
+
 class BGRL(torch.nn.Module):
     """BGRL architecture for Graph Representation Learning.
     From:
@@ -38,7 +39,9 @@ class BGRL(torch.nn.Module):
 
     def trainable_parameters(self):
         r"""Returns the parameters that will be updated via an optimizer."""
-        return list(self.online_encoder.parameters()) + list(self.predictor.parameters())
+        return list(self.online_encoder.parameters()) + list(
+            self.predictor.parameters()
+        )
 
     @torch.no_grad()
     def update_target_network(self, mm):
@@ -47,9 +50,13 @@ class BGRL(torch.nn.Module):
         Args:
             mm (float): Momentum used in moving average update.
         """
-        assert 0.0 <= mm <= 1.0, "Momentum needs to be between 0.0 and 1.0, got %.5f" % mm
-        for param_q, param_k in zip(self.online_encoder.parameters(), self.target_encoder.parameters()):
-            param_k.data.mul_(mm).add_(param_q.data, alpha=1. - mm)
+        assert 0.0 <= mm <= 1.0, (
+            "Momentum needs to be between 0.0 and 1.0, got %.5f" % mm
+        )
+        for param_q, param_k in zip(
+            self.online_encoder.parameters(), self.target_encoder.parameters()
+        ):
+            param_k.data.mul_(mm).add_(param_q.data, alpha=1.0 - mm)
 
     def forward(self, online_x, target_x):
         # forward online network
@@ -62,6 +69,7 @@ class BGRL(torch.nn.Module):
         with torch.no_grad():
             target_y = self.target_encoder(target_x).detach()
         return online_q, target_y
+
 
 class MlpPredictor(nn.Module):
     r"""MLP used for the BGRL/T-BGRL predictor. The MLP has one hidden layer.
@@ -76,8 +84,11 @@ class MlpPredictor(nn.Module):
     def __init__(self, input_size, output_size, hidden_size=512):
         super().__init__()
 
-        self.net = nn.Sequential(nn.Linear(input_size, hidden_size, bias=True), nn.PReLU(1),
-                                 nn.Linear(hidden_size, output_size, bias=True))
+        self.net = nn.Sequential(
+            nn.Linear(input_size, hidden_size, bias=True),
+            nn.PReLU(1),
+            nn.Linear(hidden_size, output_size, bias=True),
+        )
         self.reset_parameters()
 
     def forward(self, x):
