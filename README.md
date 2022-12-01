@@ -98,6 +98,8 @@ We provide transductive and inductive max-margin-loss GCN implementation in the 
 
 You can manually choose between running each model on the transductive and inductive splits with the `--split_method` flag. Specifically, `--split_method=transductive` will use the transductive split, and `--split_method=inductive` will use the inductive split.
 
+While all of the paper results were obtained running the model in full-batch settings, we include a mini-batch BGRL and T-BGRL implementation for larger datasets. Please note that we have not extensively tested this and the results may therefore differ from full-batch settings. You can run the models in this setting using the `--batch_graphs` flag.
+
 For more information on what flags are available for a script, you can use the `--helpfull` flag. For example, `python src/train_nc.py --helpfull` will print out all accepted flags, as well as a short description of what each one does.
 
 ## Credit
