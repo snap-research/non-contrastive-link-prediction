@@ -82,6 +82,9 @@ def do_node_inductive_edge_split(
             O means observed and U means unobserved.
         - negative_samples: negative samples to be used to calculate Hits@K
 
+    If return_split is True, it will return an additional Data object containing only
+    the split nodes.
+
     A more detailed description of the rationale and process can be found
     in Appendix A.4 of our paper. See https://arxiv.org/pdf/2211.14394.pdf
     """
