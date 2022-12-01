@@ -10,7 +10,18 @@ For more information, please check out our paper at https://arxiv.org/abs/2211.1
 
 ## Setup
 
-The packages required for running the code are enumerated in the `requirements.txt` file. You can try to install them with `pip install -r requirements.txt`, but you may run into issue installing `torch_geometric` and its associated packages. You can install it by following the directions from [their website](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html) instead.
+We provide a Dockerfile for setting up a Docker container with all of the required dependencies. You can set up the container and run our code by executing the following commands:
+
+```bash
+(host)      $ cd docker
+(host)      $ docker run -it --name ncl-lp-run --mount type=bind,source="$(pwd)"/..,target=/code ncl-lp --gpus=all
+(container) $ cd /code
+(container) $ ./run_inductive.sh cora # replace with the desired dataset
+```
+
+If you do not have a GPU on your machine, you may run it without the `--gpus` flag and the code will use your CPU instead.
+
+If you prefer not to use Docker, the packages required for running the code are enumerated in the `requirements.txt` file. You can try to install them with `pip install -r requirements.txt`, but you may run into issue installing `torch_geometric` and its associated packages. We suggest installed those packages in the order shown in [`setup.sh`](docker/setup.sh), which is used by our Dockerfile.
 
 ## Hardware Requirements
 

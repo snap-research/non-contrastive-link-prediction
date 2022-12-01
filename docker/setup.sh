@@ -2,13 +2,13 @@
 
 # Update packages & install wget
 echo "apt update"
-apt update
+apt-get update
 echo "install wget"
-apt install wget -y
+apt-get install wget -y
 echo "upgrade packages"
-apt upgrade -y
+apt-get upgrade -y
 echo "remove unused packages"
-apt autoremove -y
+apt-get autoremove -y
 
 echo "Installing miniconda"
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
@@ -19,9 +19,8 @@ bash Miniconda3-latest-Linux-x86_64.sh -p "$HOME/miniconda" -b
 eval "$("$HOME/miniconda/bin/conda" shell.bash hook)"
 
 echo "Install torch, PyG and DGL"
-conda install -y pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
+conda install pytorch torchvision torchaudio pytorch-cuda=11.6 -c pytorch -c nvidia
 conda install -y pyg -c pyg
-fconda install -y -c dglteam dgl-cuda11.3
 
 echo "Install numpy, ogb, sklearn, TB"
 pip install -U pip
