@@ -9,6 +9,8 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 import logging
 
+from .models.decoders import DecoderZoo
+
 from .classification import do_classification_eval
 from .utils import compute_representations_only
 
@@ -256,7 +258,7 @@ def perform_nn_link_eval(
     """
     data = dataset[0]
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    valid_model = lp_zoo.filter_models(FLAGS.link_pred_model)[
+    valid_model = DecoderZoo.filter_models(FLAGS.link_pred_model)[
         model_idx
     ]  # should exist, checked in main()
     model = lp_zoo.get_model(valid_model, embedding_size=embeddings.embedding_dim).to(
@@ -471,7 +473,7 @@ def perform_inductive_nn_link_eval(
     assert wb is not None
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    valid_model = lp_zoo.filter_models(flags.link_pred_model)[
+    valid_model = DecoderZoo.filter_models(flags.link_pred_model)[
         model_idx
     ]  # should exist, checked in main()
     model = lp_zoo.get_model(

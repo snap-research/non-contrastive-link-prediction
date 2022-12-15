@@ -17,7 +17,7 @@ from ..scheduler import CosineDecayScheduler
 from ..utils import compute_data_representations_only
 from ..transforms import compose_transforms
 
-from ..models.decoders import MLPProdDecoder
+from ..models.decoders import MlpProdDecoder
 
 FLAGS = flags.FLAGS
 log = logging.getLogger(__name__)
@@ -106,7 +106,7 @@ def perform_e2e_transductive_training(
         data.num_nodes,
         n_feats=data.x.size(1),
     ).to(device)
-    predictor = MLPProdDecoder(
+    predictor = MlpProdDecoder(
         representation_size, hidden_size=FLAGS.link_mlp_hidden_size
     ).to(device)
 
@@ -182,8 +182,7 @@ def perform_e2e_transductive_training(
             'target_metric': target_metric,
             'type': 'prod',
             'val': best_val,
-            'test': best_results,
-            'fixed': True,
+            'test': best_results
         }
     ]
     write_results(model_name, output_dir, all_results)
@@ -220,7 +219,7 @@ def perform_e2e_inductive_training(
         data.num_nodes,
         n_feats=data.x.size(1),
     ).to(device)
-    predictor = MLPProdDecoder(
+    predictor = MlpProdDecoder(
         representation_size, hidden_size=FLAGS.link_mlp_hidden_size
     ).to(device)
 

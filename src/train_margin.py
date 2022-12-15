@@ -13,7 +13,7 @@ import wandb
 import torch.nn.functional as F
 
 from lib.data import get_dataset
-from lib.models import LinkPredictorZoo, EncoderZoo
+from lib.models import DecoderZoo, EncoderZoo
 from lib.training import (
     perform_transductive_margin_training,
     perform_inductive_margin_training,
@@ -22,11 +22,11 @@ from lib.eval import do_all_eval, do_inductive_eval
 from ogb.linkproppred import PygLinkPropPredDataset
 
 import lib.flags as FlagHelper
+from lib.split import do_transductive_edge_split, do_node_inductive_edge_split
 from lib.utils import (
-    do_node_inductive_edge_split,
-    do_transductive_edge_split,
     is_small_dset,
     merge_multirun_results,
+    print_run_num,
 )
 
 ######
@@ -37,7 +37,7 @@ log.setLevel(logging.DEBUG)
 FLAGS = flags.FLAGS
 
 # Define shared flags
-FlagHelper.define_flags('ML-GCN')
+FlagHelper.define_flags(FlagHelper.ModelGroup.MLGCN)
 
 # Flags specific to ML-GCN
 flags.DEFINE_float('margin', 3.0, 'Margin used for max-margin loss')
@@ -79,11 +79,11 @@ def main(_):
     # use CUDA_VISIBLE_DEVICES to select gpu
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     log.info('Using {} for training.'.format(device))
-    lp_zoo = LinkPredictorZoo(FLAGS)
-    g_zoo: EncoderZoo = EncoderZoo(FLAGS)
+    enc_zoo = EncoderZoo(FLAGS)
+    dec_zoo = DecoderZoo(FLAGS)
 
-    g_zoo.check_model(FLAGS.graph_encoder_model)
-    valid_models = lp_zoo.filter_models(FLAGS.link_pred_model)
+    enc_zoo.check_model(FLAGS.graph_encoder_model)
+    valid_models = DecoderZoo.filter_models(FLAGS.link_pred_model)
     log.info(f'Found link pred validation models: {FLAGS.link_pred_model}')
     log.info(f'Using encoder model: {FLAGS.graph_encoder_model}')
 
@@ -139,11 +139,7 @@ def main(_):
     time_bundle = None
 
     for run_num in range(FLAGS.num_runs):
-        log.info('=' * 30)
-        log.info('=' * 30)
-        log.info('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
-        log.info('=' * 30)
-        log.info('=' * 30)
+        print_run_num(run_num)
 
         if FLAGS.split_method == 'transductive':
             (
@@ -151,7 +147,7 @@ def main(_):
                 representations,
                 time_bundle,
             ) = perform_transductive_margin_training(
-                data, edge_split, output_dir, device, input_size, has_features, g_zoo
+                data, edge_split, output_dir, device, input_size, has_features, enc_zoo
             )
 
             if FLAGS.normalize_embeddings:
@@ -166,7 +162,7 @@ def main(_):
                 dataset=dataset,
                 edge_split=edge_split,
                 embeddings=embeddings,
-                lp_zoo=lp_zoo,
+                lp_zoo=dec_zoo,
                 wb=wandb,
             )
         else:  # inductive
@@ -178,7 +174,7 @@ def main(_):
                 device,
                 input_size,
                 has_features,
-                g_zoo,
+                enc_zoo,
             )
 
             results = do_inductive_eval(
@@ -189,7 +185,7 @@ def main(_):
                 train_data=training_data,
                 val_data=val_data,
                 inference_data=inference_data,
-                lp_zoo=lp_zoo,
+                lp_zoo=dec_zoo,
                 device=device,
                 test_edge_bundle=test_edge_bundle,
                 negative_samples=negative_samples,
@@ -215,5 +211,4 @@ def main(_):
 
 
 if __name__ == "__main__":
-    log.info('PyTorch version: %s' % torch.__version__)
     app.run(main)

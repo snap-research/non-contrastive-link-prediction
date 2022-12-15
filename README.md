@@ -21,7 +21,7 @@ We provide a Dockerfile for setting up a Docker container with all of the requir
 
 If you do not have a GPU on your machine, you may run it without the `--gpus` flag and the code will use your CPU instead.
 
-If you prefer not to use Docker, the packages required for running the code are enumerated in the `requirements.txt` file. You can try to install them with `pip install -r requirements.txt`, but you may run into issue installing `torch_geometric` and its associated packages. We suggest installed those packages in the order shown in [`setup.sh`](docker/setup.sh), which is used by our Dockerfile.
+If you prefer not to use Docker, the packages required for running the code are enumerated in the `requirements.txt` file. You can try to install them with `pip install -r requirements.txt`, but you may run into issue installing `torch_geometric` and its associated packages. We suggest installing those packages in the order shown in [`setup.sh`](docker/setup.sh), which is used by our Dockerfile.
 
 ## Hardware Requirements
 
@@ -39,7 +39,7 @@ We ran Bayesian hyperparameter optimization for 25 runs on every model-dataset c
 
 All transductive runs are performed with an embedding size of 256, and all inductive runs (due to the smaller datasets) are performed with an embedding size of 128.
 
-The detailed run parameters for each BGRL run can be found in [`src/config`](src/config). Note that many of the parameters in those configs are unused (e.g. `hybrid_transition_epoch`). The most important parameters are listed below:
+The detailed run parameters for each BGRL run can be found in [`src/config`](src/config). The most important parameters are listed below:
 
 - `drop_edge_p_1`: the edge drop probability for the online encoder
 - `drop_edge_p_2`: the edge drop probability for the target encoder

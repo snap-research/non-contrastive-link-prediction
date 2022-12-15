@@ -18,11 +18,8 @@ from lib.training import (
 from ogb.linkproppred import PygLinkPropPredDataset
 import lib.flags as FlagHelper
 
-from lib.utils import (
-    do_transductive_edge_split,
-    do_node_inductive_edge_split,
-    merge_multirun_results,
-)
+from lib.split import do_transductive_edge_split, do_node_inductive_edge_split
+from lib.utils import merge_multirun_results, print_run_num
 
 ######
 # Flags
@@ -32,7 +29,7 @@ log.setLevel(logging.DEBUG)
 FLAGS = flags.FLAGS
 
 # Define shared flags
-FlagHelper.define_flags('E2E-GCN')
+FlagHelper.define_flags(FlagHelper.ModelGroup.E2E)
 flags.DEFINE_integer('lr_warmup_epochs', 1000, 'Warmup period for learning rate.')
 
 
@@ -53,9 +50,9 @@ def main(_):
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     log.info('Using {} for training.'.format(device))
 
-    g_zoo = EncoderZoo(FLAGS)
+    enc_zoo = EncoderZoo(FLAGS)
 
-    g_zoo.check_model(FLAGS.graph_encoder_model)
+    enc_zoo.check_model(FLAGS.graph_encoder_model)
     log.info(f'Found link pred validation models: {FLAGS.link_pred_model}')
     log.info(f'Using encoder model: {FLAGS.graph_encoder_model}')
 
@@ -100,15 +97,11 @@ def main(_):
         raise ValueError(f'Dataset does not contain node features, which are required.')
 
     input_size = data.x.size(1)
-    representation_size = FLAGS.graph_encoder_layer[-1]
+    representation_size = FLAGS.graph_encoder_layer_dims[-1]
 
     all_results = []
     for run_num in range(FLAGS.num_runs):
-        log.info('=' * 30)
-        log.info('=' * 30)
-        log.info('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
-        log.info('=' * 30)
-        log.info('=' * 30)
+        print_run_num(run_num)
 
         if FLAGS.split_method == 'transductive':
             _, _, results = perform_e2e_transductive_training(
@@ -120,7 +113,7 @@ def main(_):
                 device=device,
                 input_size=input_size,
                 has_features=True,
-                g_zoo=g_zoo,
+                g_zoo=enc_zoo,
             )
         else:
             _, _, results = perform_e2e_inductive_training(
@@ -136,7 +129,7 @@ def main(_):
                 device=device,
                 input_size=input_size,
                 has_features=True,
-                g_zoo=g_zoo,
+                g_zoo=enc_zoo,
             )
         all_results.append(results)
 
@@ -150,5 +143,4 @@ def main(_):
 
 
 if __name__ == "__main__":
-    log.info('PyTorch version: %s' % torch.__version__)
     app.run(main)

@@ -3,6 +3,7 @@ import os
 from absl import flags
 import logging
 from os import path
+from enum import Enum
 
 from .transforms import VALID_TRANSFORMS
 
@@ -15,15 +16,24 @@ def between_zero_one(x):
     return 0 < x < 1
 
 
-def define_flags(model_name):
-    define_shared_flags(model_name)
-    if model_name == 'GRACE' or model_name == 'NCL':
+class ModelGroup(Enum):
+    # DEFAULT is used to represent the case where a ModelGroup is not specified
+    DEFAULT = 0
+    GRACE = 1
+    E2E = 2
+    MLGCN = 3
+    NCL = 4
+
+
+def define_flags(model_group):
+    define_shared_flags(model_group)
+    if model_group in (ModelGroup.GRACE, ModelGroup.NCL):
         define_aug_flags()
 
 
-def define_shared_flags(model_name):
+def define_shared_flags(model_group):
     """Define flags that are shared across all models"""
-    get_default = lambda name: get_flag_default(model_name, name)
+    get_default = lambda name: get_flag_default(model_group, name)
 
     # General flags
     flags.DEFINE_string('logdir', None, 'Where the checkpoint and logs are stored.')
@@ -75,7 +85,7 @@ def define_shared_flags(model_name):
         'graph_encoder_model', 'gcn', ['gcn'], 'Which type of graph encoder to use.'
     )
     flags.DEFINE_multi_integer(
-        'graph_encoder_layer',
+        'graph_encoder_layer_dims',
         [256, 256],
         'Conv layer sizes. Each value indicates a new layer.',
     )
@@ -149,15 +159,17 @@ def define_aug_flags():
     )
 
 
-OVERRIDES = {
-    'default': {'epochs': 10000, 'lr': 1e-5},
-    'E2E-GCN': {'epochs': 1000, 'lr': 1e-3},
+# This contains model-specific overrides for the defaults of each argument.
+# For example, the E2E-GCN generally requires fewer epochs than the NCL methods.
+DEFAULT_FLAG_OVERRIDES = {
+    ModelGroup.DEFAULT: {'epochs': 10000, 'lr': 1e-5},
+    ModelGroup.E2E: {'epochs': 1000, 'lr': 1e-3},
 }
 
 
-def get_flag_default(model_name, field_name):
-    default_val = OVERRIDES['default'][field_name]
-    model_dict = OVERRIDES.get(model_name, None)
+def get_flag_default(model_group, field_name):
+    default_val = DEFAULT_FLAG_OVERRIDES[ModelGroup.DEFAULT][field_name]
+    model_dict = DEFAULT_FLAG_OVERRIDES.get(model_group, None)
     if model_dict is None:
         return default_val
 

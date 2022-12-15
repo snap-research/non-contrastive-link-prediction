@@ -22,7 +22,7 @@ log.setLevel(logging.DEBUG)
 
 
 def perform_gbt_training(
-    data, output_dir, device, input_size: int, has_features: bool, g_zoo
+    data, output_dir, device, input_size: int, has_features: bool, enc_zoo
 ):
     """Train a Graph Barlow Twins model on the data.
     Works for both the transductive and inductive settings (only difference is the data passed in).
@@ -39,7 +39,7 @@ def perform_gbt_training(
         drop_feat_p=FLAGS.drop_feat_p_2,
     )
 
-    encoder = g_zoo.get_model(
+    encoder = enc_zoo.get_model(
         FLAGS.graph_encoder_model,
         input_size,
         has_features,
@@ -68,7 +68,7 @@ def perform_gbt_training(
         optimizer.zero_grad()
 
         if not has_features:
-            data.x = encoder.get_node_feats().weight.data.clone().detach()
+            data.x = encoder.get_node_feats().weight.data
 
         x1, x2 = transform_1(data), transform_2(data)
         y1, y2 = model(x1, x2)

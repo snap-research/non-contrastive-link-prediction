@@ -14,7 +14,7 @@ import torch
 from torch import nn
 import wandb
 from lib.data import get_dataset
-from lib.models.decoders import LinkPredictorZoo
+from lib.models.decoders import DecoderZoo
 from lib.models import EncoderZoo
 from lib.eval import do_all_eval, do_inductive_eval
 from ogb.linkproppred import PygLinkPropPredDataset
@@ -25,11 +25,11 @@ from lib.training import (
     perform_triplet_training,
 )
 from lib.transforms import VALID_NEG_TRANSFORMS
+from lib.split import do_transductive_edge_split, do_node_inductive_edge_split
 from lib.utils import (
-    do_node_inductive_edge_split,
-    do_transductive_edge_split,
     is_small_dset,
     merge_multirun_results,
+    print_run_num,
 )
 import lib.flags as FlagHelper
 
@@ -41,8 +41,8 @@ log.setLevel(logging.DEBUG)
 
 FLAGS = flags.FLAGS
 
-FlagHelper.define_flags('NCL')
-# Dataset.
+# Define shared flags
+FlagHelper.define_flags(FlagHelper.ModelGroup.NCL)
 flags.DEFINE_enum(
     'base_model', 'bgrl', ['gbt', 'bgrl', 'triplet', 'cca'], 'Which base model to use.'
 )
@@ -163,11 +163,11 @@ def main(_):
     # use CUDA_VISIBLE_DEVICES to select gpu
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     log.info('Using {} for training.'.format(device))
-    lp_zoo = LinkPredictorZoo(FLAGS)
-    g_zoo: EncoderZoo = EncoderZoo(FLAGS)
+    enc_zoo = EncoderZoo(FLAGS)
+    dec_zoo = DecoderZoo(FLAGS)
 
-    g_zoo.check_model(FLAGS.graph_encoder_model)
-    valid_models = lp_zoo.filter_models(FLAGS.link_pred_model)
+    enc_zoo.check_model(FLAGS.graph_encoder_model)
+    valid_models = DecoderZoo.filter_models(FLAGS.link_pred_model)
     log.info(f'Found link pred validation models: {FLAGS.link_pred_model}')
     log.info(f'Using encoder model: {FLAGS.graph_encoder_model}')
 
@@ -232,7 +232,7 @@ def main(_):
     # build networks
     has_features = True
     input_size = data.x.size(1)  # type: ignore
-    representation_size = FLAGS.graph_encoder_layer[-1]
+    representation_size = FLAGS.graph_encoder_layer_dims[-1]
 
     train_cb = None
 
@@ -242,11 +242,7 @@ def main(_):
     time_bundle = None
 
     for run_num in range(FLAGS.num_runs):
-        log.info('=' * 30)
-        log.info('=' * 30)
-        log.info('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
-        log.info('=' * 30)
-        log.info('=' * 30)
+        print_run_num(run_num)
 
         if FLAGS.base_model == 'bgrl':
             encoder, representations, time_bundle = perform_bgrl_training(
@@ -256,7 +252,7 @@ def main(_):
                 device=device,
                 input_size=input_size,
                 has_features=has_features,
-                g_zoo=g_zoo,
+                g_zoo=enc_zoo,
                 train_cb=train_cb,
                 extra_return=FLAGS.save_extra,
             )
@@ -271,12 +267,12 @@ def main(_):
                 device=device,
                 input_size=input_size,
                 has_features=has_features,
-                g_zoo=g_zoo,
+                g_zoo=enc_zoo,
             )
             log.info('Finished training!')
         elif FLAGS.base_model == 'gbt':
             encoder, representations, time_bundle = perform_gbt_training(
-                training_data, OUTPUT_DIR, device, input_size, has_features, g_zoo
+                training_data, OUTPUT_DIR, device, input_size, has_features, enc_zoo
             )
             # del encoder
             log.info('Finished training')
@@ -288,7 +284,7 @@ def main(_):
                 device=device,
                 input_size=input_size,
                 has_features=has_features,
-                g_zoo=g_zoo,
+                g_zoo=enc_zoo,
                 train_cb=train_cb,
             )
         else:
@@ -308,7 +304,7 @@ def main(_):
                 dataset=dataset,
                 edge_split=edge_split,
                 embeddings=embeddings,
-                lp_zoo=lp_zoo,
+                lp_zoo=dec_zoo,
                 wb=wandb,
             )
         else:  # inductive
@@ -320,7 +316,7 @@ def main(_):
                 train_data=training_data,
                 val_data=val_data,
                 inference_data=inference_data,
-                lp_zoo=lp_zoo,
+                lp_zoo=dec_zoo,
                 device=device,
                 test_edge_bundle=test_edge_bundle,
                 negative_samples=negative_samples,
@@ -352,6 +348,7 @@ def main(_):
             ),
             path.join(OUTPUT_DIR, 'data_split.pt'),
         )
+    print(all_results)
     agg_results, to_log = merge_multirun_results(all_results)
     wandb.log(to_log)
 
@@ -366,5 +363,4 @@ def main(_):
 
 
 if __name__ == "__main__":
-    log.info('PyTorch version: %s' % torch.__version__)
     app.run(main)

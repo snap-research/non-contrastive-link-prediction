@@ -13,9 +13,7 @@ from .utils import get_time_bundle
 from ..scheduler import CosineDecayScheduler
 from ..utils import compute_data_representations_only
 from ..transforms import compose_transforms
-
-from ..models.bgrl import MlpPredictor
-from ..models.tbgrl import TripletBgrl
+from ..models import MlpPredictor, TripletBgrl
 
 FLAGS = flags.FLAGS
 log = logging.getLogger(__name__)

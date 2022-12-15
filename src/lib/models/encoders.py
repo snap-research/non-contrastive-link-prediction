@@ -1,58 +1,12 @@
 import torch
 import torch.nn as nn
 from torch_geometric.nn import BatchNorm, GCNConv, LayerNorm, Sequential
+from torch_geometric.data import Data
+from enum import Enum
 
 
-class EncoderZoo:
-    """Returns an encoder of the specified type."""
-
-    def __init__(self, flags):
-        self.models = {'gcn': GCN}
-        self.flags = flags
-
-    def _init_model(
-        self,
-        model_class,
-        input_size: int,
-        use_feat: bool,
-        n_nodes: int,
-        batched: bool,
-        n_feats: int,
-    ):
-        flags = self.flags
-        if model_class == GCN:
-            return GCN(
-                [input_size] + flags.graph_encoder_layer,
-                batchnorm=True,
-                use_feat=use_feat,
-                n_nodes=n_nodes,
-                batched=batched,
-            )
-
-    # Function to test if the model exists
-    # Raise an error if not
-    def check_model(self, model_name: str):
-        if model_name not in self.models:
-            raise ValueError(f'Unknown predictor model "{model_name}"')
-
-    def get_model(
-        self,
-        model_name: str,
-        input_size: int,
-        use_feat: bool,
-        n_nodes: int,
-        n_feats: int,
-        batched: bool = False,
-    ):
-        self.check_model(model_name)
-        return self._init_model(
-            self.models[model_name],
-            input_size,
-            use_feat,
-            n_nodes,
-            batched=batched,
-            n_feats=n_feats,
-        )
+class EncoderModel(Enum):
+    GCN = 'gcn'
 
 
 class GCN(nn.Module):
@@ -114,11 +68,10 @@ class GCN(nn.Module):
             self.node_feats = nn.Embedding(n_nodes, layer_sizes[1])
 
     def split_forward(self, x, edge_index):
-        if self.weight_standardization:
-            self.standardize_weights()
-        if self.use_feat:
-            return self.model(x, edge_index)
-        return self.model(self.node_feats.weight.data.clone(), edge_index)
+        """Convenience function to perform a forward pass on a feature matrix
+        and edge index separately without needing to create a Data object.
+        """
+        return self(Data(x, edge_index))
 
     def forward(self, data):
         if not self.batched:
@@ -158,3 +111,63 @@ class GCN(nn.Module):
     @property
     def num_layers(self):
         return self.n_layers
+
+
+class EncoderZoo:
+    """Returns an encoder of the specified type.
+    Reads flags from an instance of absl.FlagValues.
+    See ../lib/flags.py for flag defaults and descriptions.
+    """
+
+    # Note: we use the value of the enums since we read them in as flags
+    models = {EncoderModel.GCN.value: GCN}
+
+    def __init__(self, flags):
+        self.flags = flags
+
+    def _init_model(
+        self,
+        model_class,
+        input_size: int,
+        use_feat: bool,
+        n_nodes: int,
+        batched: bool,
+        n_feats: int,
+    ):
+        flags = self.flags
+        if model_class == GCN:
+            return GCN(
+                [input_size] + flags.graph_encoder_layer_dims,
+                batchnorm=True,
+                use_feat=use_feat,
+                n_nodes=n_nodes,
+                batched=batched,
+            )
+
+    @staticmethod
+    def check_model(model_name: str):
+        """Checks if a model with the given name exists.
+        Raises an error if not.
+        """
+        if model_name not in EncoderZoo.models:
+            raise ValueError(f'Unknown encoder model: "{model_name}"')
+        return True
+
+    def get_model(
+        self,
+        model_name: str,
+        input_size: int,
+        use_feat: bool,
+        n_nodes: int,
+        n_feats: int,
+        batched: bool = False,
+    ):
+        EncoderZoo.check_model(model_name)
+        return self._init_model(
+            EncoderZoo.models[model_name],
+            input_size,
+            use_feat,
+            n_nodes,
+            batched=batched,
+            n_feats=n_feats,
+        )

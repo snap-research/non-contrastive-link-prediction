@@ -29,7 +29,7 @@ class DropFeatures:
         return data
 
     def __repr__(self):
-        return '{}(p={})'.format(self.__class__.__name__, self.p)
+        return f'{self.__class__.__name__}(p={self.p})'
 
 
 class ScrambleFeatures:
@@ -41,7 +41,7 @@ class ScrambleFeatures:
         return data
 
     def __repr__(self):
-        return '{}(p={})'.format(self.__class__.__name__, self.p)
+        return f'{self.__class__.__name__}(p={self.p})'
 
 
 class RandomEdges:
@@ -53,7 +53,7 @@ class RandomEdges:
         return data
 
     def __repr__(self):
-        return '{}()'.format(self.__class__.__name__)
+        return f'{self.__class__.__name__}()'
 
 
 class RandomRangeEdges:
@@ -70,7 +70,7 @@ class RandomRangeEdges:
         return data
 
     def __repr__(self):
-        return '{}()'.format(self.__class__.__name__)
+        return f'{self.__class__.__name__}()'
 
 
 class DropEdges:
@@ -99,9 +99,7 @@ class DropEdges:
         return data
 
     def __repr__(self):
-        return '{}(p={}, force_undirected={})'.format(
-            self.__class__.__name__, self.p, self.force_undirected
-        )
+        return f'{self.__class__.__name__}()'
 
 
 class AddEdges:
@@ -122,9 +120,7 @@ class AddEdges:
         return data
 
     def __repr__(self):
-        return '{}(sample_size_ratio={})'.format(
-            self.__class__.__name__, self.sample_size_ratio
-        )
+        return f'{self.__class__.__name__}(sample_size_ratio={self.sample_size_ratio})'
 
 
 class RandomizeFeatures:
@@ -138,9 +134,7 @@ class RandomizeFeatures:
         return data
 
     def __repr__(self):
-        return '{}(sample_size_ratio={})'.format(
-            self.__class__.__name__, self.sample_size_ratio
-        )
+        return f'{self.__class__.__name__}()'
 
 
 VALID_TRANSFORMS = dict(
@@ -191,7 +185,7 @@ class ChooserTransformation:
         return transformation(data)
 
     def __repr__(self):
-        return '{}({})'.format(self.__class__.__name__, self.transformations_str)
+        return f'{self.__class__.__name__}({self.transformations_str})'
 
 
 def compose_transforms(transform_name, drop_edge_p, drop_feat_p, create_copy=True):

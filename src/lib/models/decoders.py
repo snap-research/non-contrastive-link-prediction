@@ -1,53 +1,15 @@
 from typing import List
 import torch
 from torch import nn
+from enum import Enum
 
 
-class LinkPredictorZoo:
-    """Class that allows switching between different link prediction decoders.
-    Two models are currently supported:
-      - prod_mlp: a Hadamard product MLP
-      - mlp: a concatenation-based MLP
-    """
-
-    def __init__(self, flags):
-        self.models = {'mlp': MLPConcatDecoder, 'prod_mlp': MLPProdDecoder}
-        self.flags = flags
-
-    def init_model(self, model_class, embedding_size):
-        flags = self.flags
-        if model_class == MLPConcatDecoder:
-            if flags.adjust_layer_sizes:
-                return MLPConcatDecoder(
-                    embedding_size=embedding_size,
-                    hidden_size=flags.link_mlp_hidden_size * 2,
-                )
-            return MLPConcatDecoder(
-                embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size
-            )
-        elif model_class == MLPProdDecoder:
-            return MLPProdDecoder(
-                embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size
-            )
-
-    def filter_models(self, models: List[str]):
-        return [model for model in models if model in self.models]
-
-    def check_model(self, model_name):
-        """Checks if a model with the given name exists.
-        Raises an error if not.
-        """
-
-        if model_name not in self.models:
-            raise ValueError(f'Unknown predictor model "{model_name}"')
-
-    def get_model(self, model_name, embedding_size):
-        """Given a model name, return the corresponding model class."""
-        self.check_model(model_name)
-        return self.init_model(self.models[model_name], embedding_size)
+class DecoderModel(Enum):
+    CONCAT_MLP = 'concat_mlp'
+    PRODUCT_MLP = 'prod_mlp'
 
 
-class MLPConcatDecoder(torch.nn.Module):
+class MlpConcatDecoder(torch.nn.Module):
     """Concatentation-based MLP link predictor."""
 
     def __init__(self, embedding_size, hidden_size):
@@ -65,7 +27,7 @@ class MLPConcatDecoder(torch.nn.Module):
         return torch.sigmoid(self.forward(x))
 
 
-class MLPProdDecoder(torch.nn.Module):
+class MlpProdDecoder(torch.nn.Module):
     """Hadamard-product-based MLP link predictor."""
 
     def __init__(self, embedding_size, hidden_size):
@@ -82,3 +44,56 @@ class MLPProdDecoder(torch.nn.Module):
 
     def predict(self, x):
         return torch.sigmoid(self.forward(x))
+
+
+class DecoderZoo:
+    """Class that allows switching between different link prediction decoders.
+    Two models are currently supported:
+      - prod_mlp: a Hadamard product MLP
+      - mlp: a concatenation-based MLP
+
+    Reads flags from an instance of absl.FlagValues.
+    See ../lib/flags.py for flag defaults and descriptions.
+    """
+
+    # Note: we use the value of the enums since we read them in as flags
+    models = {
+        DecoderModel.CONCAT_MLP.value: MlpConcatDecoder,
+        DecoderModel.PRODUCT_MLP.value: MlpProdDecoder,
+    }
+
+    def __init__(self, flags):
+        self.flags = flags
+
+    def init_model(self, model_class, embedding_size):
+        flags = self.flags
+        if model_class == MlpConcatDecoder:
+            if flags.adjust_layer_sizes:
+                return MlpConcatDecoder(
+                    embedding_size=embedding_size,
+                    hidden_size=flags.link_mlp_hidden_size * 2,
+                )
+            return MlpConcatDecoder(
+                embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size
+            )
+        elif model_class == MlpProdDecoder:
+            return MlpProdDecoder(
+                embedding_size=embedding_size, hidden_size=flags.link_mlp_hidden_size
+            )
+
+    @staticmethod
+    def filter_models(models: List[str]):
+        return [model for model in models if model in DecoderZoo.models]
+
+    def check_model(self, model_name):
+        """Checks if a model with the given name exists.
+        Raises an error if not.
+        """
+        if model_name not in self.models:
+            raise ValueError(f'Unknown decoder model: "{model_name}"')
+        return True
+
+    def get_model(self, model_name, embedding_size):
+        """Given a model name, return the corresponding model class."""
+        self.check_model(model_name)
+        return self.init_model(self.models[model_name], embedding_size)

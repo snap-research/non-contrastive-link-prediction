@@ -18,7 +18,7 @@ bash Miniconda3-latest-Linux-x86_64.sh -p "$HOME/miniconda" -b
 "$HOME/miniconda/bin/conda" shell.bash hook >> "$HOME/.bashrc"
 eval "$("$HOME/miniconda/bin/conda" shell.bash hook)"
 
-echo "Install torch, PyG and DGL"
+echo "Install torch and PyG"
 conda install pytorch torchvision torchaudio pytorch-cuda=11.6 -c pytorch -c nvidia
 conda install -y pyg -c pyg
 

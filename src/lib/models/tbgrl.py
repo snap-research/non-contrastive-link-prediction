@@ -51,6 +51,7 @@ class TripletBgrl(torch.nn.Module):
 
     @torch.no_grad()
     def forward_target(self, target_x):
+        """Performs inference on the target encoder without autograd information."""
         return self.target_encoder(target_x).detach()
 
     def forward(self, online_x, target_x):

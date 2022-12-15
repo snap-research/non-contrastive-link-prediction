@@ -15,20 +15,19 @@ import torch.nn.functional as F
 import torch.nn as nn
 from torch_geometric.utils import dropout_adj
 from torch_geometric.nn import GCNConv
-from lib.utils import compute_representations_only
+from lib.utils import compute_representations_only, print_run_num
 from lib.data import get_dataset
 from ogb.linkproppred import PygLinkPropPredDataset
 
 from lib.eval import do_all_eval, do_inductive_eval
-from lib.models import GraceEncoder, GraceModel, LinkPredictorZoo
+from lib.models import GraceEncoder, GraceModel, DecoderZoo
 from lib.training import get_time_bundle
 import lib.flags as FlagHelper
 
+from lib.split import do_transductive_edge_split, do_node_inductive_edge_split
 from lib.utils import (
-    do_transductive_edge_split,
     is_small_dset,
-    do_node_inductive_edge_split,
-    merge_multirun_results,
+    merge_multirun_results
 )
 
 ######
@@ -39,7 +38,7 @@ log.setLevel(logging.DEBUG)
 FLAGS = flags.FLAGS
 
 # Shared flags
-FlagHelper.define_flags('GRACE')
+FlagHelper.define_flags(FlagHelper.ModelGroup.GRACE)
 
 # GRACE-specific flags
 flags.DEFINE_enum(
@@ -164,15 +163,10 @@ def main(_):
     total_times = []
 
     for run_num in range(FLAGS.num_runs):
-        log.info('=' * 30)
-        log.info('=' * 30)
-        log.info('=' * 10 + f'  Run #{run_num}  ' + '=' * 10)
-        log.info('=' * 30)
-        log.info('=' * 30)
+        print_run_num(run_num)
 
-        # TODO(author): change to use EncoderZoo?
-        lp_zoo = LinkPredictorZoo(FLAGS)
-        valid_models = lp_zoo.filter_models(FLAGS.link_pred_model)
+        dec_zoo = DecoderZoo(FLAGS)
+        valid_models = DecoderZoo.filter_models(FLAGS.link_pred_model)
 
         encoder = GraceEncoder(
             dataset.num_features,
@@ -231,7 +225,7 @@ def main(_):
                 train_data=training_data,
                 val_data=val_data,
                 inference_data=inference_data,
-                lp_zoo=lp_zoo,
+                lp_zoo=dec_zoo,
                 device=device,
                 test_edge_bundle=test_edge_bundle,
                 negative_samples=negative_samples,
@@ -247,7 +241,7 @@ def main(_):
                 dataset=dataset,
                 edge_split=edge_split,
                 embeddings=embeddings,
-                lp_zoo=lp_zoo,
+                lp_zoo=dec_zoo,
                 wb=wandb,
             )
         all_results.append(results)
@@ -262,5 +256,4 @@ def main(_):
 
 
 if __name__ == "__main__":
-    log.debug('PyTorch version: %s' % torch.__version__)
     app.run(main)

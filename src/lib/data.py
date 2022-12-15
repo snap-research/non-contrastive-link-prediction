@@ -49,20 +49,6 @@ def get_dataset(root, name, transform=Compose([ConvertToFloat(), NormalizeFeatur
     return dataset
 
 
-def get_wiki_cs(root, transform=NormalizeFeatures()):
-    dataset = datasets.WikiCS(root, transform=transform)
-    data = dataset[0]
-    std, mean = torch.std_mean(data.x, dim=0, unbiased=False)
-    data.x = (data.x - mean) / std
-    data.edge_index = to_undirected(data.edge_index)
-    return (
-        [data],
-        np.array(data.train_mask),
-        np.array(data.val_mask),
-        np.array(data.test_mask),
-    )
-
-
 class PygConcatDataset(InMemoryDataset):
     """PyG Dataset class for merging multiple Dataset objects into one."""
 
