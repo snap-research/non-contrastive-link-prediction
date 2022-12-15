@@ -182,7 +182,7 @@ def perform_e2e_transductive_training(
             'target_metric': target_metric,
             'type': 'prod',
             'val': best_val,
-            'test': best_results
+            'test': best_results,
         }
     ]
     write_results(model_name, output_dir, all_results)

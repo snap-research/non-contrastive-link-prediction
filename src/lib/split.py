@@ -18,6 +18,7 @@ log = logging.getLogger(__name__)
 FLAGS = flags.FLAGS
 SMALL_DATASETS = set(['cora', 'citeseer'])
 
+
 def create_mask(base_mask, rows, cols):
     return base_mask[rows] & base_mask[cols]
 

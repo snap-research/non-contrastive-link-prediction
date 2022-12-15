@@ -25,10 +25,7 @@ from lib.training import get_time_bundle
 import lib.flags as FlagHelper
 
 from lib.split import do_transductive_edge_split, do_node_inductive_edge_split
-from lib.utils import (
-    is_small_dset,
-    merge_multirun_results
-)
+from lib.utils import is_small_dset, merge_multirun_results
 
 ######
 # Flags

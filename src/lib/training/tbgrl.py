@@ -156,12 +156,25 @@ def perform_triplet_training(
             sim2 = F.cosine_similarity(q2, y1.detach()).mean()
             neg_sim1 = F.cosine_similarity(q1, neg_y.detach()).mean()
             neg_sim2 = F.cosine_similarity(q2, neg_y.detach()).mean()
-            to_log = {'sim1': sim1, 'sim2': sim2, 'neg_sim1': neg_sim1, 'neg_sim2': neg_sim2}
+            to_log = {
+                'sim1': sim1,
+                'sim2': sim2,
+                'neg_sim1': neg_sim1,
+                'neg_sim2': neg_sim2,
+            }
 
             loss = neg_lambda * (neg_sim1 + neg_sim2) - (1 - neg_lambda) * (sim1 + sim2)
             loss.backward()
 
-            wandb.log({'curr_lr': lr, 'curr_mm': mm, 'train_loss': loss, 'epoch': epoch, **to_log})
+            wandb.log(
+                {
+                    'curr_lr': lr,
+                    'curr_mm': mm,
+                    'train_loss': loss,
+                    'epoch': epoch,
+                    **to_log,
+                }
+            )
 
         optimizer.step()
         # update target network
@@ -178,11 +191,13 @@ def perform_triplet_training(
             data,
             num_neighbors=[
                 FLAGS.n_batch_neighbors,
-            ] * encoder.num_layers,
+            ]
+            * encoder.num_layers,
             batch_size=FLAGS.graph_batch_size,
             shuffle=True,
             num_workers=FLAGS.n_workers,
-            pin_memory=True)
+            pin_memory=True,
+        )
 
         for epoch in tqdm(range(1, FLAGS.epochs + 1)):
             st_time = time.time_ns()

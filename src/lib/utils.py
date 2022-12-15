@@ -14,6 +14,7 @@ SMALL_DATASETS = set(['cora', 'citeseer'])
 SHORT_DIVIDER = '=' * 10
 LONG_DIVIDER_STR = '=' * 30
 
+
 def print_run_num(run_num):
     log.info(LONG_DIVIDER_STR)
     log.info(LONG_DIVIDER_STR)

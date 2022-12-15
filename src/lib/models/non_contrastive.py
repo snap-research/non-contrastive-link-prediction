@@ -1,5 +1,6 @@
 from torch import nn
 
+
 class MlpPredictor(nn.Module):
     r"""MLP used for the BGRL/T-BGRL predictor. The MLP has one hidden layer.
     This function is from https://github.com/nerdslab/bgrl/blob/dec99f8c605e3c4ae2ece57f3fa1d41f350d11a9/bgrl/predictors.py

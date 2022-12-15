@@ -64,15 +64,29 @@ flags.DEFINE_multi_enum(
 )
 
 # Batching-related flags
-flags.DEFINE_bool('batch_graphs', False, 'Whether or not to perform batching on graphs. Only implemented for BGRL and T-BGRL.')
+flags.DEFINE_bool(
+    'batch_graphs',
+    False,
+    'Whether or not to perform batching on graphs. Only implemented for BGRL and T-BGRL.',
+)
 flags.DEFINE_integer(
     'graph_batch_size', 1024, 'Number of subgraphs to use per minibatch.'
 )
 flags.DEFINE_integer(
-    'graph_eval_batch_size', 128, 'Number of subgraphs to use per minibatch. Only used if batch_graphs is True.'
+    'graph_eval_batch_size',
+    128,
+    'Number of subgraphs to use per minibatch. Only used if batch_graphs is True.',
 )
-flags.DEFINE_integer('n_workers', 0, 'Number of workers to use for the dataloader. Only used if batch_graphs is True.')
-flags.DEFINE_integer('n_batch_neighbors', 50, 'Number of neighbors to use when performing minibatching. Only used if batch_graphs is True.')
+flags.DEFINE_integer(
+    'n_workers',
+    0,
+    'Number of workers to use for the dataloader. Only used if batch_graphs is True.',
+)
+flags.DEFINE_integer(
+    'n_batch_neighbors',
+    50,
+    'Number of neighbors to use when performing minibatching. Only used if batch_graphs is True.',
+)
 
 flags.DEFINE_integer('lr_warmup_epochs', 1000, 'Warmup period for learning rate.')
 flags.DEFINE_bool(
