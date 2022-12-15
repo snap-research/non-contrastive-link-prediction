@@ -1,0 +1,16 @@
+.vscode
+
+# Temp files
+*.pyc
+*.pt
+*.aus
+*.log
+*.tgz
+**/__pycache__
+**/wandb
+
+# Runtime data
+src/runs
+src/data
+src/dataset
+.ipynb_checkpoints
