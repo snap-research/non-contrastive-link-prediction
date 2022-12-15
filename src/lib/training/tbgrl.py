@@ -8,6 +8,7 @@ from tqdm import tqdm
 import wandb
 import torch.nn.functional as F
 import logging
+from torch_geometric.loader import NeighborLoader
 
 from .utils import get_time_bundle
 from ..scheduler import CosineDecayScheduler
@@ -75,6 +76,7 @@ def perform_triplet_training(
     # Train & eval functions
     #####
     def full_train(step):
+        """Peform full-batch T-BGRL training"""
         model.train()
 
         # update learning rate
@@ -128,30 +130,86 @@ def perform_triplet_training(
         )
         return loss
 
+    def batch_train(loader, epoch):
+        """Peform minibatch T-BGRL training"""
+        model.train()
+
+        # update learning rate
+        lr = lr_scheduler.get(epoch)
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+
+        # update momentum
+        mm = 1 - mm_scheduler.get(epoch)
+
+        for batch in tqdm(iterable=loader, desc='Batches', leave=False):
+            batch = batch.to(device)
+            optimizer.zero_grad()
+
+            x1, x2, x3 = transform_1(batch), transform_2(batch), transform_3(batch)
+
+            q1, y2 = model(x1, x2)
+            q2, y1 = model(x2, x1)
+            neg_y = model.forward_target(x3)
+
+            sim1 = F.cosine_similarity(q1, y2.detach()).mean()
+            sim2 = F.cosine_similarity(q2, y1.detach()).mean()
+            neg_sim1 = F.cosine_similarity(q1, neg_y.detach()).mean()
+            neg_sim2 = F.cosine_similarity(q2, neg_y.detach()).mean()
+            to_log = {'sim1': sim1, 'sim2': sim2, 'neg_sim1': neg_sim1, 'neg_sim2': neg_sim2}
+
+            loss = neg_lambda * (neg_sim1 + neg_sim2) - (1 - neg_lambda) * (sim1 + sim2)
+            loss.backward()
+
+            wandb.log({'curr_lr': lr, 'curr_mm': mm, 'train_loss': loss, 'epoch': epoch, **to_log})
+
+        optimizer.step()
+        # update target network
+        model.update_target_network(mm)
+
     best_loss = None
     last_update_epoch = 0
     times = []
 
-    # training loop
-    for epoch in tqdm(range(1, FLAGS.epochs + 1)):
-        if train_cb is not None:
-            train_cb(epoch - 1, model)
-        st_time = time.time_ns()
+    # training loops
+    if FLAGS.batch_graphs:
+        times = []
+        train_loader = NeighborLoader(
+            data,
+            num_neighbors=[
+                FLAGS.n_batch_neighbors,
+            ] * encoder.num_layers,
+            batch_size=FLAGS.graph_batch_size,
+            shuffle=True,
+            num_workers=FLAGS.n_workers,
+            pin_memory=True)
 
-        train_loss = full_train(epoch - 1)
+        for epoch in tqdm(range(1, FLAGS.epochs + 1)):
+            st_time = time.time_ns()
+            batch_train(train_loader, epoch - 1)
+            elapsed = time.time_ns() - st_time
+            times.append(elapsed)
+    else:
+        for epoch in tqdm(range(1, FLAGS.epochs + 1)):
+            if train_cb is not None:
+                train_cb(epoch - 1, model)
+            st_time = time.time_ns()
 
-        elapsed = time.time_ns() - st_time
-        times.append(elapsed)
+            train_loss = full_train(epoch - 1)
 
-        if best_loss is None or (best_loss - train_loss >= 0.01):
-            best_loss = train_loss
-            last_update_epoch = epoch
-        elif (
-            FLAGS.training_early_stop
-            and epoch - last_update_epoch > FLAGS.training_early_stop_patience
-        ):
-            log.info('Early stopping performed!')
-            break
+            elapsed = time.time_ns() - st_time
+            times.append(elapsed)
+
+            if best_loss is None or (best_loss - train_loss >= 0.01):
+                best_loss = train_loss
+                last_update_epoch = epoch
+            elif (
+                FLAGS.training_early_stop
+                and epoch - last_update_epoch > FLAGS.training_early_stop_patience
+            ):
+                log.info('Early stopping performed!')
+                break
+
     time_bundle = get_time_bundle(times)
 
     # save encoder weights

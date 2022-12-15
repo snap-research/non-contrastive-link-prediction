@@ -154,9 +154,8 @@ def perform_bgrl_training(
         times = []
         train_loader = NeighborLoader(
             data,
-            # sizes from https://github.com/pbielak/graph-barlow-twins/blob/master/experiments/scripts/batched/hps_bgrl.py
             num_neighbors=[
-                10,
+                FLAGS.n_batch_neighbors,
             ]
             * encoder.num_layers,
             batch_size=FLAGS.graph_batch_size,
@@ -165,7 +164,10 @@ def perform_bgrl_training(
         )
 
         for epoch in tqdm(range(1, FLAGS.epochs + 1)):
+            st_time = time.time_ns()
             batch_train(train_loader, epoch - 1)
+            elapsed = time.time_ns() - st_time
+            times.append(elapsed)
     else:
         data = data.to(device)
         times = []
